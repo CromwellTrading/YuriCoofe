@@ -57,9 +57,11 @@ class CafeteriaApplication : Application() {
     /** Returns false until both HTTPS API and Firebase app configuration are available. */
     fun registerPushTokenIfConfigured(): Boolean {
         if (!apiClient.isConfigured) return false
-        val firebase = configuredFirebaseApp() ?: return false
+        if (configuredFirebaseApp() == null) return false
         return try {
-            FirebaseMessaging.getInstance(firebase).token.addOnSuccessListener { token ->
+            // FirebaseMessaging.getInstance(FirebaseApp) is not public in the current SDK.
+            // configuredFirebaseApp() ensures the application's default FirebaseApp exists.
+            FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
                 CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                     runCatching {
                         val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
