@@ -1,0 +1,49 @@
+name: Android debug build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build debug APK
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_SENDER_ID: ${{ secrets.FIREBASE_SENDER_ID }}
+        run: >-
+          gradle --no-daemon assembleDebug
+          -PAPI_BASE_URL="${API_BASE_URL}"
+          -PFIREBASE_API_KEY="${FIREBASE_API_KEY}"
+          -PFIREBASE_APP_ID="${FIREBASE_APP_ID}"
+          -PFIREBASE_PROJECT_ID="${FIREBASE_PROJECT_ID}"
+          -PFIREBASE_SENDER_ID="${FIREBASE_SENDER_ID}"
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: cafeteria-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
