@@ -1,0 +1,10 @@
+<resources>
+    <style name="Theme.Cafeteria" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#6D4AFF</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">#F8F7FC</item>
+        <item name="android:navigationBarColor">#F8F7FC</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>
