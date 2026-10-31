@@ -21,11 +21,29 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # v4 installs current command-line tools (22.0) instead of the old
+      # 16.0 tools used by setup-android@v3 in the failed run.
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: '15859902'
+          accept-android-sdk-licenses: 'true'
+          log-accepted-android-sdk-licenses: 'false'
+          packages: ''
 
       - name: Install Android SDK packages
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [[ -z "$SDK_ROOT" ]]; then
+            echo "::error::ANDROID_HOME and ANDROID_SDK_ROOT are both unset."
+            exit 1
+          fi
+          echo "Using Android SDK at: $SDK_ROOT"
+          sdkmanager --sdk_root="$SDK_ROOT" --install \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
