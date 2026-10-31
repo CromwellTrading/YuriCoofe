@@ -20,6 +20,8 @@ const val SCREEN_REPORTS = "REPORTS"
 const val SCREEN_ANNOUNCEMENTS = "ANNOUNCEMENTS"
 const val SCREEN_TEAM = "TEAM"
 const val SCREEN_CUSTOMER_CATALOG = "CUSTOMER_CATALOG"
+const val SCREEN_SETTINGS = "SETTINGS"
+const val SCREEN_LOGIN = "STAFF_LOGIN"
 
 data class CafeteriaUiState(
     val loading: Boolean = true,
@@ -39,7 +41,9 @@ data class CafeteriaUiState(
     val search: String = "",
     val category: String = "Todas",
     val sortBy: String = "Nombre",
-    val ascending: Boolean = true
+    val ascending: Boolean = true,
+    val appearance: String = "SYSTEM",
+    val palette: String = "PURPLE"
 )
 
 class CafeteriaViewModel(application: Application) : AndroidViewModel(application) {
@@ -52,30 +56,41 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
 
     init {
         viewModelScope.launch {
-            val session = runCatching { repository.restoreSession() }.getOrNull()
-            val cachedProducts = runCatching { repository.getCachedProducts() }.getOrDefault(emptyList())
+            val savedSession = runCatching { repository.restoreSession() }.getOrNull()
+            val activeSession = savedSession ?: guestSession()
+            val cachedAll = runCatching { repository.getCachedProducts() }.getOrDefault(emptyList())
+            val cachedProducts = if (savedSession == null || savedSession.role == Roles.CUSTOMER) cachedAll.filter { it.publicVisible } else cachedAll
             val localSales = runCatching { repository.getRecentSales() }.getOrDefault(emptyList())
             val pending = runCatching { repository.pendingCount() }.getOrDefault(0)
             state.value = state.value.copy(
                 loading = false,
-                session = session,
+                session = activeSession,
                 products = cachedProducts,
                 sales = localSales,
                 pendingCount = pending,
-                screen = when (session?.role) {
+                screen = when (savedSession?.role) {
                     Roles.OWNER -> SCREEN_HOME
                     Roles.WORKER -> SCREEN_SELL
-                    Roles.CUSTOMER -> SCREEN_CUSTOMER_CATALOG
-                    else -> SCREEN_HOME
+                    else -> SCREEN_CUSTOMER_CATALOG
                 },
                 online = repository.isNetworkAvailable()
             )
-            if (session != null) {
-                if (session.role != Roles.CUSTOMER) app.registerPushTokenIfConfigured()
-                refreshAll()
+            refreshAll()
+            if (savedSession != null && savedSession.role != Roles.CUSTOMER) app.registerPushTokenIfConfigured()
+        }
+        viewModelScope.launch {
+            app.settingsStore.settings.collect { settings ->
+                state.value = state.value.copy(appearance = settings.appearance, palette = settings.palette)
             }
         }
     }
+
+    private fun guestSession() = UserSession(
+        userId = "guest-${java.util.UUID.randomUUID()}",
+        displayName = "Visitante",
+        role = Roles.CUSTOMER,
+        accessToken = ""
+    )
 
     fun clearMessage() { state.value = state.value.copy(message = null, error = null) }
     fun setScreen(screen: String) { state.value = state.value.copy(screen = screen, message = null, error = null) }
@@ -104,16 +119,22 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun openCatalogAsGuest() {
         viewModelScope.launch {
-            val guest = UserSession(
-                userId = "guest-${java.util.UUID.randomUUID()}",
-                displayName = "Cliente",
-                role = Roles.CUSTOMER,
-                accessToken = ""
-            )
-            repository.sessionStore.save(guest)
-            state.value = state.value.copy(session = guest, screen = SCREEN_CUSTOMER_CATALOG, message = null, error = null)
+            if (runCatching { repository.restoreSession() }.getOrNull() != null) runCatching { repository.logout() }
+            state.value = state.value.copy(session = guestSession(), screen = SCREEN_CUSTOMER_CATALOG, message = null, error = null)
             refreshAll()
         }
+    }
+
+    fun openStaffLogin() {
+        state.value = state.value.copy(screen = SCREEN_LOGIN, error = null, message = null)
+    }
+
+    fun setAppearance(value: String) {
+        viewModelScope.launch { app.settingsStore.setAppearance(value) }
+    }
+
+    fun setPalette(value: String) {
+        viewModelScope.launch { app.settingsStore.setPalette(value) }
     }
 
     fun enableNotifications() {
@@ -123,7 +144,8 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun logout() = runBusy("No se pudo cerrar la sesión.") {
         repository.logout()
-        state.value = state.value.copy(session = null, message = "Sesión cerrada.", screen = SCREEN_HOME)
+        state.value = state.value.copy(session = guestSession(), message = "Sesión cerrada. Ahora estás viendo la tienda como visitante.", screen = SCREEN_CUSTOMER_CATALOG)
+        refreshAll()
     }
 
     fun refreshAll() {
@@ -163,6 +185,12 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
         onSaved()
     }
 
+
+    fun retryProductChanges() = runBusy("No se pudieron reintentar los cambios de catálogo.") {
+        val count = repository.retryProductChangesForCurrentOwner()
+        state.value = state.value.copy(pendingCount = repository.pendingCount(), message = if (count > 0) "$count cambio(s) de catálogo volverán a sincronizarse." else "No hay cambios de catálogo pendientes de revisión.")
+    }
+
     fun retrySale(saleId: String) = runBusy("No se pudo reintentar la venta.") {
         repository.retrySale(saleId)
         state.value = state.value.copy(sales = repository.getRecentSales(), pendingCount = repository.pendingCount(), message = "Se volverá a enviar la venta con la misma fecha e identificador.")
@@ -170,7 +198,11 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun saveProduct(draft: ProductDraft, onSaved: () -> Unit = {}) = runBusy("No se pudo guardar el producto.") {
         val product = repository.saveProduct(draft)
-        state.value = state.value.copy(products = repository.getCachedProducts(), message = "Producto guardado: ${product.name}.")
+        state.value = state.value.copy(
+            products = repository.getCachedProducts(),
+            pendingCount = repository.pendingCount(),
+            message = "${product.name} guardado en este teléfono. Se sincronizará automáticamente cuando haya conexión."
+        )
         onSaved()
     }
 
@@ -260,7 +292,10 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             state.value = state.value.copy(online = repository.isNetworkAvailable())
             refreshSalesMerged()
-            state.value = state.value.copy(message = "Sincronización solicitada. Las ventas se conservan hasta recibir confirmación del servicio.")
+            state.value = state.value.copy(
+                pendingCount = repository.pendingCount(),
+                message = "Sincronización solicitada. Las ventas y cambios del catálogo permanecen guardados hasta recibir confirmación del servidor."
+            )
         }
     }
 
@@ -282,7 +317,11 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
             } finally {
                 state.value = state.value.copy(busy = false, online = repository.isNetworkAvailable())
                 val cached = runCatching { repository.getCachedProducts() }.getOrNull()
-                if (cached != null) state.value = state.value.copy(products = cached)
+                if (cached != null) {
+                    val current = state.value.session
+                    val visible = if (current == null || current.role == Roles.CUSTOMER) cached.filter { it.publicVisible } else cached
+                    state.value = state.value.copy(products = visible)
+                }
                 state.value = state.value.copy(pendingCount = runCatching { repository.pendingCount() }.getOrDefault(state.value.pendingCount))
             }
         }

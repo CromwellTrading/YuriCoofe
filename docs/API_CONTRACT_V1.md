@@ -1,6 +1,6 @@
 # Contrato de API v1 para Cafetería
 
-Este documento define el contrato que consume la app Android. Especifica el comportamiento esperado para implementar el backend después. No significa que el servidor ya exista.
+Este documento describe el contrato v1 implementado por el backend Node.js/PostgreSQL y consumido por la aplicación Android. Las versiones de ambos proyectos deben mantenerse compatibles.
 
 ## Convenciones generales
 
@@ -73,7 +73,7 @@ Cada producto contiene estos campos (los opcionales pueden ser `null`):
 }
 ```
 
-`unitPriceCup` es obligatorio cuando se vende por unidad; puede ser `null` para `SUBUNIT`. `unitPriceTransfer` y `subunitPriceTransfer` son opcionales. Un precio de transferencia ausente o nulo significa que ese formato no puede cobrarse por transferencia. `stockSubunits` debe ser un número cuando se conoce la equivalencia; si no se conoce, debe ser `null`, no una cantidad inventada.
+`unitPriceCup` es obligatorio cuando se vende por unidad; puede ser `null` para `SUBUNIT`. Un producto `SUBUNIT` con `subunitsPerUnit=null` y `stockUnits=0` representa preparados como café/chocolate por vaso: las ventas por porción son válidas y se contabilizan, pero no se deduce un stock ficticio de recipientes. Si `stockUnits>0`, esos recipientes se conservan sin deducir un rendimiento desconocido y deben ajustarse manualmente al agotarse. Para `BOTH` sin equivalencia se mantiene la regla de que debe quedar al menos un recipiente al registrar porciones. `unitPriceTransfer` y `subunitPriceTransfer` son opcionales. Un precio de transferencia ausente o nulo significa que ese formato no puede cobrarse por transferencia. `stockSubunits` debe ser un número cuando se conoce la equivalencia; si no se conoce, debe ser `null`, no una cantidad inventada. Para `visibility=public`, el servicio solo entrega disponibilidad (`stockUnits` 1/0), sin cantidades privadas. La app marca esta copia local como aproximada y no la usa para vender offline ni para editar inventario. Una consulta pública no debe sobrescribir una copia privada exacta ya descargada en ese dispositivo.
 
 `priceVersion` es un token opaco que cambia cada vez que se modifica cualquier precio, moneda/método habilitado o formato que afecte al cálculo de precio. Los cambios de existencias por sí solos no deben cambiar `priceVersion`. El cliente lo envía en cada venta para detectar ventas con precios antiguos. `updatedAt` cambia ante modificaciones de producto de cualquier tipo.
 
@@ -147,7 +147,7 @@ El backend debe cumplir los puntos siguientes:
 7. Conservar `soldAt` como hora del evento recibida y guardar aparte `receivedAt`/hora del servidor. No sustituir el evento original por la hora de sincronización. Usar `deviceTimeZoneId` y `deviceOffsetMinutes` solo como metadatos de contexto; para los informes del negocio usar la zona horaria configurada del negocio.
 8. La respuesta exitosa devuelve `saleId`, `clientSaleId`, `status` y `soldAt` dentro de `data`.
 
-La app escribe primero la venta y la deducción local en la misma transacción Room. WorkManager solo intenta enviar cuando hay conectividad y reutiliza el UUID, el header y el JSON original. Nunca se elimina una venta local al recibir error o al perder internet. La sincronización está limitada a la cuenta trabajadora original para evitar reasignar ventas a otra persona en un dispositivo compartido.
+La app escribe primero la venta y la deducción local en la misma transacción Room. Los cambios de catálogo de la dueña se guardan en una segunda cola Room con su propio ID, fecha, JSON e imagen copiada al almacenamiento interno. WorkManager procesa cronológicamente cambios de producto y ventas: crea primero un producto local y actualiza los IDs/precios de las ventas posteriores antes de enviarlas. Solo intenta enviar cuando hay conectividad y reutiliza el UUID, el header y el JSON original de cada venta. Nunca se elimina una venta local al recibir error o al perder internet. La sincronización está limitada a la cuenta trabajadora original para evitar reasignar ventas a otra persona en un dispositivo compartido.
 
 ### `GET /api/v1/sales`
 

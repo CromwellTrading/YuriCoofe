@@ -33,7 +33,7 @@ class ApiClient(private val sessionStore: SessionStore) {
                 val request = chain.request().newBuilder().apply {
                     if (!token.isNullOrBlank()) header("Authorization", "Bearer $token")
                     header("Accept", "application/json")
-                    header("X-App-Version", "1.0.0")
+                    header("X-App-Version", BuildConfig.VERSION_NAME)
                 }.build()
                 chain.proceed(request)
             }

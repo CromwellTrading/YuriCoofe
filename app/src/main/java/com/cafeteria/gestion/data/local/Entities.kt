@@ -1,7 +1,9 @@
 package com.cafeteria.gestion.data.local
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.PrimaryKey
+import androidx.room.Index
 
 @Entity(tableName = "products")
 data class ProductEntity(
@@ -23,7 +25,8 @@ data class ProductEntity(
     val minimumStock: Long = 0,
     val publicVisible: Boolean = true,
     val updatedAt: String = "",
-    val priceVersion: String = ""
+    val priceVersion: String = "",
+    @ColumnInfo(defaultValue = "0") val stockIsApproximate: Boolean = false
 )
 
 @Entity(tableName = "sale_queue")
@@ -40,4 +43,18 @@ data class SaleQueueEntity(
     val status: String = "PENDING",
     val lastError: String? = null,
     val syncedAt: String? = null
+)
+
+/** Durable owner-only outbox for product creates/updates made while disconnected. */
+@Entity(tableName = "product_queue", indices = [Index(value = ["productId"])])
+data class ProductQueueEntity(
+    @PrimaryKey val id: String,
+    val productId: String,
+    val ownerId: String,
+    val operation: String,
+    val payloadJson: String,
+    val imageUri: String? = null,
+    val createdAtEpochMs: Long,
+    val status: String = "PENDING",
+    val lastError: String? = null
 )

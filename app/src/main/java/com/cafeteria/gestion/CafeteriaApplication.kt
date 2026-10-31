@@ -20,6 +20,8 @@ class CafeteriaApplication : Application() {
         private set
     lateinit var sessionStore: SessionStore
         private set
+    lateinit var settingsStore: com.cafeteria.gestion.data.AppSettingsStore
+        private set
     lateinit var apiClient: ApiClient
         private set
     lateinit var repository: CafeRepository
@@ -29,12 +31,16 @@ class CafeteriaApplication : Application() {
         super.onCreate()
         database = CafeDatabase.get(this)
         sessionStore = SessionStore(this)
+        settingsStore = com.cafeteria.gestion.data.AppSettingsStore(this)
         apiClient = ApiClient(sessionStore)
         repository = CafeRepository(database, sessionStore, apiClient, contentResolver, this)
         // Initialize the default Firebase app during Application startup so push messages can
         // be handled even when Android starts the app process in the background.
         configuredFirebaseApp()
         SalesSyncScheduler.ensurePeriodic(this)
+        // If a staff session and queued offline operations exist, attempt delivery on app restart.
+        // WorkManager waits for network connectivity and retries transient failures.
+        SalesSyncScheduler.enqueueNow(this)
     }
 
     private fun configuredFirebaseApp(): FirebaseApp? {
@@ -57,11 +63,9 @@ class CafeteriaApplication : Application() {
     /** Returns false until both HTTPS API and Firebase app configuration are available. */
     fun registerPushTokenIfConfigured(): Boolean {
         if (!apiClient.isConfigured) return false
-        if (configuredFirebaseApp() == null) return false
+        val firebase = configuredFirebaseApp() ?: return false
         return try {
-            // FirebaseMessaging.getInstance(FirebaseApp) is not public in the current SDK.
-            // configuredFirebaseApp() ensures the application's default FirebaseApp exists.
-            FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+            FirebaseMessaging.getInstance(firebase).token.addOnSuccessListener { token ->
                 CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                     runCatching {
                         val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID).orEmpty()

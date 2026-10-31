@@ -6,7 +6,7 @@ import com.cafeteria.gestion.data.SalePayload
 import com.cafeteria.gestion.data.TeamMember
 import com.cafeteria.gestion.data.local.ProductEntity
 
-/** Every endpoint returns a consistent envelope. The future backend should keep this contract. */
+/** Every endpoint returns the response envelope implemented by the Cafeteria backend API v1. */
 data class ApiEnvelope<T>(
     val data: T? = null,
     val message: String? = null,
@@ -65,7 +65,8 @@ data class ProductDto(
         minimumStock = if (publicView) 0L else minimumStock,
         publicVisible = publicVisible,
         updatedAt = updatedAt.orEmpty(),
-        priceVersion = priceVersion.ifBlank { updatedAt.orEmpty() }
+        priceVersion = priceVersion.ifBlank { updatedAt.orEmpty() },
+        stockIsApproximate = publicView
     )
 }
 

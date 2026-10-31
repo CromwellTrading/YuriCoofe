@@ -6,61 +6,37 @@ import org.junit.Test
 
 class StockCalculatorTest {
     @Test
-    fun sellingBoxesAndLooseCigarettesNormalizesRemainingStock() {
-        val remaining = StockCalculator.afterSale(
-            stockUnits = 10,
-            stockSubunits = 0,
-            subunitsPerUnit = 20,
-            soldUnits = 5,
-            soldSubunits = 30
-        )
+    fun `mixed carton and cigarette sales normalize remaining stock`() {
+        val remaining = StockCalculator.afterSale(10, 0, 20, 5, 30)
         assertEquals(3L, remaining.units)
         assertEquals(10L, remaining.subunits)
     }
 
     @Test
-    fun twentyOneLooseItemsConsumesOneUnitAndOneLooseItem() {
-        val remaining = StockCalculator.afterSale(
-            stockUnits = 10,
-            stockSubunits = 0,
-            subunitsPerUnit = 20,
-            soldUnits = 0,
-            soldSubunits = 21
-        )
+    fun `21 loose cigarettes consume one carton and one loose cigarette`() {
+        val remaining = StockCalculator.afterSale(10, 0, 20, 0, 21)
         assertEquals(8L, remaining.units)
         assertEquals(19L, remaining.subunits)
     }
 
     @Test
-    fun knownEquivalencePreventsOverselling() {
-        assertThrows(IllegalArgumentException::class.java) {
-            StockCalculator.afterSale(1, 0, 20, 1, 1)
-        }
-    }
-
-    @Test
-    fun unknownEquivalenceRequiresAtLeastOneContainerForPortions() {
-        assertThrows(IllegalArgumentException::class.java) {
-            StockCalculator.afterSale(
-                stockUnits = 0,
-                stockSubunits = null,
-                subunitsPerUnit = null,
-                soldUnits = 0,
-                soldSubunits = 1
-            )
-        }
-    }
-
-    @Test
-    fun unknownEquivalenceDoesNotGuessContainerYield() {
-        val remaining = StockCalculator.afterSale(
-            stockUnits = 3,
-            stockSubunits = null,
-            subunitsPerUnit = null,
-            soldUnits = 0,
-            soldSubunits = 8
-        )
-        assertEquals(3L, remaining.units)
+    fun `untracked cups can be sold without inventing container stock`() {
+        val remaining = StockCalculator.afterSale(0, null, null, 0, 12, allowUntrackedSubunitSales = true)
+        assertEquals(0L, remaining.units)
         assertEquals(null, remaining.subunits)
+    }
+
+    @Test
+    fun `known container count is not consumed when yield is unknown`() {
+        val remaining = StockCalculator.afterSale(1, null, null, 0, 12, allowUntrackedSubunitSales = true)
+        assertEquals(1L, remaining.units)
+        assertEquals(null, remaining.subunits)
+    }
+
+    @Test
+    fun `known stock cannot become negative`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            StockCalculator.afterSale(1, 0, 20, 0, 21)
+        }
     }
 }

@@ -17,8 +17,8 @@ android {
         applicationId = "com.cafeteria.gestion"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 3
+        versionName = "1.2.0"
         fun configValue(name: String): String = providers.gradleProperty(name).orElse("").get()
         fun quotedConfig(name: String) = "\"${configValue(name).replace("\\", "\\\\").replace("\"", "\\\"")}\""
         buildConfigField("String", "API_BASE_URL", quotedConfig("API_BASE_URL"))
@@ -26,6 +26,31 @@ android {
         buildConfigField("String", "FIREBASE_APP_ID", quotedConfig("FIREBASE_APP_ID"))
         buildConfigField("String", "FIREBASE_PROJECT_ID", quotedConfig("FIREBASE_PROJECT_ID"))
         buildConfigField("String", "FIREBASE_SENDER_ID", quotedConfig("FIREBASE_SENDER_ID"))
+    }
+
+    signingConfigs {
+        create("release") {
+            storeType = "JKS"
+            val storePath = providers.environmentVariable("ANDROID_KEYSTORE_FILE").orNull
+            val storePass = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
+            val keyAliasValue = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+            val keyPass = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+            if (!storePath.isNullOrBlank() && !storePass.isNullOrBlank() && !keyAliasValue.isNullOrBlank() && !keyPass.isNullOrBlank()) {
+                storeFile = file(storePath)
+                storePassword = storePass
+                keyAlias = keyAliasValue
+                keyPassword = keyPass
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            val signingReady = listOf("ANDROID_KEYSTORE_FILE", "ANDROID_KEYSTORE_PASSWORD", "ANDROID_KEY_ALIAS", "ANDROID_KEY_PASSWORD")
+                .all { !providers.environmentVariable(it).orNull.isNullOrBlank() }
+            if (signingReady) signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+        }
     }
 
     buildFeatures {

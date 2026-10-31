@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.room.withTransaction
 import com.cafeteria.gestion.data.local.CafeDatabase
 import com.cafeteria.gestion.data.local.ProductEntity
+import com.cafeteria.gestion.data.local.ProductQueueEntity
 import com.cafeteria.gestion.data.local.SaleQueueEntity
 import com.cafeteria.gestion.data.remote.*
 import com.cafeteria.gestion.sync.SalesSyncScheduler
@@ -16,6 +17,8 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
+import java.io.File
+import java.util.UUID
 
 class CafeRepository(
     private val database: CafeDatabase,
@@ -27,6 +30,7 @@ class CafeRepository(
     private val gson = Gson()
     private val products get() = database.productDao()
     private val queue get() = database.saleQueueDao()
+    private val productQueue get() = database.productQueueDao()
 
     fun isBackendConfigured() = apiClient.isConfigured
     fun isNetworkAvailable(): Boolean {
@@ -57,26 +61,31 @@ class CafeRepository(
     suspend fun getCachedProducts(): List<ProductEntity> = products.getAll()
 
     suspend fun refreshProducts(): List<ProductEntity> {
-        val session = sessionStore.getSession() ?: throw IllegalStateException("Inicia sesión para actualizar el catálogo.")
-        val visibility = if (session.role == Roles.CUSTOMER) "public" else "all"
+        val session = sessionStore.getSession()
+        val publicView = session == null || session.role == Roles.CUSTOMER
+        val visibility = if (publicView) "public" else "all"
         val response = apiClient.service().getProducts(visibility = visibility)
         if (!response.isSuccessful) throw apiError(response.code(), response.errorBody()?.string())
         val remote = response.body()?.data ?: throw IllegalStateException(response.body()?.message ?: "No se pudo cargar el catálogo.")
         val localById = products.getAll().associateBy { it.id }
-        val pendingProductIds = queue.getUnresolved().flatMap { queued ->
+        val unresolvedSaleProductIds = queue.getUnresolved().flatMap { queued ->
             runCatching { gson.fromJson(queued.payloadJson, SalePayload::class.java).items.map { it.productId } }.getOrDefault(emptyList())
         }.toSet()
+        val unresolvedProductIds = productQueue.getUnresolved().map { it.productId }.toSet()
         val merged = remote.map { dto ->
-            val fresh = dto.toEntity(publicView = session.role == Roles.CUSTOMER)
+            val fresh = dto.toEntity(publicView = publicView)
             val local = localById[dto.id]
-            // A local stock count already includes this device's unsent sales. Preserve it until those
-            // sales are acknowledged, so a refresh cannot accidentally apply the same deduction twice.
-            if (local != null && dto.id in pendingProductIds) {
-                fresh.copy(stockUnits = local.stockUnits, stockSubunits = local.stockSubunits)
-            } else fresh
-        }
-        // Replace the cache so products hidden/removed from the server do not remain visible
-        // indefinitely on customer and worker devices. Pending sale payloads are independent rows.
+            when {
+                local != null && dto.id in unresolvedProductIds -> local
+                local != null && dto.id in unresolvedSaleProductIds -> fresh.copy(stockUnits = local.stockUnits, stockSubunits = local.stockSubunits, minimumStock = local.minimumStock, stockIsApproximate = local.stockIsApproximate)
+                publicView && local != null -> fresh.copy(stockUnits = local.stockUnits, stockSubunits = local.stockSubunits, minimumStock = local.minimumStock, stockIsApproximate = local.stockIsApproximate)
+                else -> fresh
+            }
+        }.toMutableList()
+        val remoteIds = merged.map { it.id }.toSet()
+        // A product created offline has a temporary local ID and must remain visible until the
+        // owner queue successfully creates it on the server.
+        localById.values.filter { (it.id in unresolvedProductIds || (publicView && !it.publicVisible)) && it.id !in remoteIds }.forEach { merged += it }
         database.withTransaction {
             products.clearAll()
             products.upsertAll(merged)
@@ -84,7 +93,32 @@ class CafeRepository(
         return products.getAll()
     }
 
+    /**
+     * Produces a monotonic local outbox order even when two actions happen in the same
+     * millisecond or the handset clock moves backwards. The actual soldAt timestamp is
+     * stored separately and is never changed by this ordering sequence.
+     */
+    private suspend fun nextQueueOrderTimestamp(): Long {
+        val latestProduct = productQueue.getUnresolved().maxOfOrNull { it.createdAtEpochMs } ?: 0L
+        val latestSale = queue.getUnresolved().maxOfOrNull { it.createdAtEpochMs } ?: 0L
+        val latest = maxOf(latestProduct, latestSale)
+        val nextAfterPending = if (latest > 0L && latest < Long.MAX_VALUE) latest + 1L else latest
+        return maxOf(System.currentTimeMillis(), nextAfterPending)
+    }
+
     suspend fun saveProduct(draft: ProductDraft): ProductEntity {
+        val session = sessionStore.getSession() ?: throw IllegalStateException("Inicia sesión como administradora para gestionar productos.")
+        require(session.role == Roles.OWNER) { "Solo la administradora puede crear o editar productos." }
+
+        val isNew = draft.id.isNullOrBlank()
+        val productId = draft.id ?: "local-${UUID.randomUUID()}"
+        val previous = if (isNew) null else products.findById(productId)
+            ?: throw IllegalStateException("No se encontró el producto guardado en este teléfono.")
+        require(previous?.stockIsApproximate != true) {
+            "Este teléfono solo tiene la disponibilidad pública, no el inventario exacto. Conéctate y actualiza el inventario antes de editar este producto."
+        }
+        val savedImageUri = draft.imageUri?.let { copyImageIntoAppStorage(it) }
+        val finalImageUri = savedImageUri ?: previous?.imageUrl
         val payload = linkedMapOf<String, Any?>(
             "name" to draft.name.trim(),
             "description" to draft.description.trim(),
@@ -100,19 +134,70 @@ class CafeRepository(
             "minimumStock" to draft.minimumStock,
             "publicVisible" to draft.publicVisible
         )
-        // Existing stock is changed only through the audited inventory-adjustment endpoint.
-        if (draft.id.isNullOrBlank()) {
+        if (isNew) {
             payload["stockUnits"] = draft.stockUnits
             payload["stockSubunits"] = draft.stockSubunits
         }
-        val json = gson.toJson(payload).toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
-        val imagePart = createImagePart(draft.imageUri)
-        val service = apiClient.service()
-        val response = if (draft.id.isNullOrBlank()) service.createProduct(json, imagePart) else service.updateProduct(draft.id, json, imagePart)
-        if (!response.isSuccessful) throw apiError(response.code(), response.errorBody()?.string())
-        val entity = response.body()?.data?.toEntity() ?: throw IllegalStateException(response.body()?.message ?: "No se pudo guardar el producto.")
-        products.upsert(entity)
-        return entity
+        val now = System.currentTimeMillis()
+        val localEntity = ProductEntity(
+            id = productId,
+            name = draft.name.trim(),
+            description = draft.description.trim(),
+            categoryName = draft.categoryName.trim(),
+            imageUrl = finalImageUri,
+            unitName = draft.unitName.trim(),
+            subunitName = draft.subunitName.trim().ifBlank { null },
+            saleMode = draft.saleMode,
+            subunitsPerUnit = draft.subunitsPerUnit,
+            unitPriceCup = draft.unitPriceCup,
+            unitPriceTransfer = draft.unitPriceTransfer,
+            subunitPriceCup = draft.subunitPriceCup,
+            subunitPriceTransfer = draft.subunitPriceTransfer,
+            stockUnits = if (isNew) draft.stockUnits else previous!!.stockUnits,
+            stockSubunits = if (draft.subunitsPerUnit != null) {
+                if (isNew) draft.stockSubunits else previous!!.stockSubunits
+            } else null,
+            minimumStock = draft.minimumStock,
+            publicVisible = draft.publicVisible,
+            updatedAt = OffsetDateTime.now().toString(),
+            priceVersion = "local-${UUID.randomUUID()}",
+            stockIsApproximate = false
+        )
+        val queueItem = ProductQueueEntity(
+            id = UUID.randomUUID().toString(),
+            productId = productId,
+            ownerId = session.userId,
+            operation = if (isNew) "CREATE" else "UPDATE",
+            payloadJson = gson.toJson(payload),
+            imageUri = savedImageUri,
+            createdAtEpochMs = now
+        )
+        database.withTransaction {
+            products.upsert(localEntity)
+            productQueue.insert(queueItem)
+        }
+        SalesSyncScheduler.enqueueNow(appContext)
+        return localEntity
+    }
+
+    private suspend fun copyImageIntoAppStorage(uriString: String): String = withContext(Dispatchers.IO) {
+        val uri = Uri.parse(uriString)
+        val input = contentResolver.openInputStream(uri)
+            ?: throw IllegalStateException("No se pudo leer la fotografía seleccionada.")
+        val mime = contentResolver.getType(uri) ?: "image/jpeg"
+        val extension = when (mime.lowercase()) {
+            "image/png" -> "png"
+            "image/webp" -> "webp"
+            else -> "jpg"
+        }
+        val directory = File(appContext.filesDir, "pending-product-images").apply { mkdirs() }
+        val file = File(directory, "${UUID.randomUUID()}.$extension")
+        input.use { source -> file.outputStream().use { target -> source.copyTo(target) } }
+        if (file.length() > 5L * 1024L * 1024L) {
+            file.delete()
+            throw IllegalArgumentException("La fotografía supera el límite de 5 MiB.")
+        }
+        Uri.fromFile(file).toString()
     }
 
     private suspend fun createImagePart(uriString: String?): MultipartBody.Part? = withContext(Dispatchers.IO) {
@@ -120,9 +205,82 @@ class CafeRepository(
         val uri = Uri.parse(uriString)
         val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
             ?: throw IllegalStateException("No se pudo leer la imagen seleccionada.")
-        val mime = contentResolver.getType(uri)?.toMediaTypeOrNull() ?: "image/jpeg".toMediaTypeOrNull()
+        val inferredMime = contentResolver.getType(uri) ?: when (uri.lastPathSegment?.substringAfterLast('.', "")?.lowercase()) {
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            else -> "image/jpeg"
+        }
+        val mime = inferredMime.toMediaTypeOrNull()
         val body = bytes.toRequestBody(mime)
         MultipartBody.Part.createFormData("image", "product-image", body)
+    }
+
+    class QueuedOperationException(val httpCode: Int, message: String) : IllegalStateException(message)
+
+    suspend fun syncQueuedProduct(item: ProductQueueEntity): ProductEntity {
+        val session = sessionStore.getSession() ?: throw IllegalStateException("Inicia sesión con la cuenta administradora para sincronizar el catálogo.")
+        require(session.role == Roles.OWNER && session.userId == item.ownerId) {
+            "Los cambios pendientes de catálogo pertenecen a la cuenta administradora que los creó. Inicia sesión con esa cuenta."
+        }
+        val body = item.payloadJson.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+        val image = createImagePart(item.imageUri)
+        val service = apiClient.service()
+        val response = if (item.operation == "CREATE") service.createProduct(body, image)
+        else service.updateProduct(item.productId, body, image)
+        if (!response.isSuccessful) throw QueuedOperationException(response.code(), apiError(response.code(), response.errorBody()?.string()).message ?: "No se pudo sincronizar el producto.")
+        val remote = response.body()?.data?.toEntity()
+            ?: throw IllegalStateException(response.body()?.message ?: "El servidor no devolvió el producto sincronizado.")
+        val oldId = item.productId
+        val local = products.findById(oldId)
+        val futureProductEdits = productQueue.getPending().any { it.id != item.id && it.productId == oldId && it.createdAtEpochMs > item.createdAtEpochMs }
+        val finalEntity = if (local != null && futureProductEdits) {
+            local.copy(id = remote.id, stockUnits = local.stockUnits, stockSubunits = local.stockSubunits)
+        } else if (local != null) {
+            remote.copy(stockUnits = local.stockUnits, stockSubunits = local.stockSubunits)
+        } else remote
+        database.withTransaction {
+            if (oldId != remote.id) products.deleteById(oldId)
+            products.upsert(finalEntity)
+            productQueue.remapProductId(oldId, remote.id)
+            productQueue.deleteById(item.id)
+            // Every unresolved sale is chronologically after this catalogue event because the
+            // worker processes a single ordered outbox. Update its server ID/version before upload.
+            queue.getPending().forEach { sale ->
+                val payload = runCatching { gson.fromJson(sale.payloadJson, SalePayload::class.java) }.getOrNull() ?: return@forEach
+                val changed = payload.items.any { it.productId == oldId }
+                if (changed) {
+                    val updatedPayload = payload.copy(items = payload.items.map { saleItem ->
+                        if (saleItem.productId == oldId) saleItem.copy(productId = remote.id, priceVersionSnapshot = remote.priceVersion)
+                        else saleItem
+                    })
+                    queue.updatePayload(sale.id, gson.toJson(updatedPayload))
+                }
+            }
+        }
+        // Remove a copied local image only after the server image replaces it in the cache.
+        val previousLocalImage = local?.imageUrl
+        if (!previousLocalImage.isNullOrBlank() && previousLocalImage.startsWith("file:") && finalEntity.imageUrl != previousLocalImage) {
+            runCatching { File(Uri.parse(previousLocalImage).path.orEmpty()).delete() }
+        }
+        return finalEntity
+    }
+
+    suspend fun updateQueuedProductStatus(id: String, status: String, error: String?) {
+        productQueue.updateStatus(id, status, error)
+    }
+
+    suspend fun pendingProductCountForCurrentOwner(): Int {
+        val session = sessionStore.getSession() ?: return 0
+        if (session.role != Roles.OWNER) return 0
+        return productQueue.attentionCountForOwner(session.userId)
+    }
+
+    suspend fun retryProductChangesForCurrentOwner(): Int {
+        val session = sessionStore.getSession() ?: throw IllegalStateException("Inicia sesión como administradora.")
+        require(session.role == Roles.OWNER) { "Solo la administradora puede reintentar cambios de catálogo." }
+        val changed = productQueue.retryOwnerReview(session.userId)
+        SalesSyncScheduler.enqueueNow(appContext)
+        return changed
     }
 
     suspend fun recordSale(
@@ -137,6 +295,7 @@ class CafeRepository(
         require(paymentMethod in setOf(PaymentMethods.CASH_CUP, PaymentMethods.TRANSFER_CUP)) { "Método de pago no válido." }
 
         val product = products.findById(expectedProduct.id) ?: throw IllegalStateException("El producto no está guardado en este teléfono. Conéctate para actualizar el catálogo.")
+        require(!product.stockIsApproximate) { "Este teléfono solo tiene la disponibilidad pública del producto, no el inventario exacto. Conéctate e inicia sesión para descargar las existencias antes de vender sin conexión." }
         require(
             product.priceVersion == expectedProduct.priceVersion &&
                 product.saleMode == expectedProduct.saleMode &&
@@ -174,6 +333,7 @@ class CafeRepository(
         // the race, the stock calculation is repeated against that new balance before insertion.
 
         val now = OffsetDateTime.now()
+        val queueOrderTimestamp = nextQueueOrderTimestamp()
         val saleId = newSaleId()
         val summaryParts = buildList {
             if (unitQuantity > 0) add("$unitQuantity ${product.unitName}")
@@ -201,12 +361,13 @@ class CafeRepository(
             workerName = session.displayName,
             paymentMethod = paymentMethod,
             items = listOf(item),
-            totalCUP = total
+            totalCUP = total,
+            appVersion = com.cafeteria.gestion.BuildConfig.VERSION_NAME
         )
         val queued = SaleQueueEntity(
             id = saleId,
             soldAt = payload.soldAt,
-            createdAtEpochMs = now.toInstant().toEpochMilli(),
+            createdAtEpochMs = queueOrderTimestamp,
             workerId = session.userId,
             workerName = session.displayName,
             summary = "${product.name}: ${summaryParts.joinToString(" + ")}",
@@ -240,7 +401,8 @@ class CafeRepository(
     }
 
     private fun calculateUpdatedStock(product: ProductEntity, units: Long, subunits: Long): ProductEntity {
-        val remaining = StockCalculator.afterSale(product.stockUnits, product.stockSubunits, product.subunitsPerUnit, units, subunits)
+        if (product.saleMode == SaleModes.SUBUNIT && product.subunitsPerUnit == null && product.stockUnits == 0L && units == 0L) return product
+        val remaining = StockCalculator.afterSale(product.stockUnits, product.stockSubunits, product.subunitsPerUnit, units, subunits, allowUntrackedSubunitSales = product.saleMode == SaleModes.SUBUNIT)
         return product.copy(stockUnits = remaining.units, stockSubunits = remaining.subunits)
     }
 
@@ -255,9 +417,9 @@ class CafeRepository(
     }
 
     suspend fun pendingCount(): Int {
-        val session = sessionStore.getSession() ?: return queue.attentionCount()
+        val session = sessionStore.getSession() ?: return 0
         return when (session.role) {
-            Roles.OWNER -> queue.attentionCount()
+            Roles.OWNER -> queue.attentionCount() + productQueue.attentionCountForOwner(session.userId)
             Roles.WORKER -> queue.attentionCountForWorker(session.userId)
             else -> 0
         }
@@ -279,8 +441,8 @@ class CafeRepository(
     }
 
     suspend fun refreshAnnouncements(): List<Announcement> {
-        val session = sessionStore.getSession() ?: throw IllegalStateException("Inicia sesión para consultar los avisos.")
-        val response = apiClient.service().getAnnouncements(includeScheduled = session.role == Roles.OWNER)
+        val session = sessionStore.getSession()
+        val response = apiClient.service().getAnnouncements(includeScheduled = session?.role == Roles.OWNER)
         if (!response.isSuccessful) throw apiError(response.code(), response.errorBody()?.string())
         return response.body()?.data.orEmpty().map { it.toModel() }
     }
@@ -348,7 +510,7 @@ class CafeRepository(
 
     suspend fun applySyncStockFromServer() {
         // Keep local deductions while any sale is unresolved, including rejected rows awaiting review.
-        if (queue.getUnresolved().isNotEmpty()) return
+        if (queue.getUnresolved().isNotEmpty() || productQueue.getUnresolved().isNotEmpty()) return
         runCatching { refreshProducts() }
     }
 

@@ -9,12 +9,18 @@ object StockCalculator {
         stockSubunits: Long?,
         subunitsPerUnit: Int?,
         soldUnits: Long,
-        soldSubunits: Long
+        soldSubunits: Long,
+        allowUntrackedSubunitSales: Boolean = false
     ): StockBalance {
         require(stockUnits >= 0 && (stockSubunits == null || stockSubunits >= 0)) { "Las existencias actuales no son válidas." }
         require(soldUnits >= 0 && soldSubunits >= 0 && (soldUnits > 0 || soldSubunits > 0)) { "Indica una cantidad mayor que cero." }
         val equivalence = subunitsPerUnit?.takeIf { it > 0 }
         if (equivalence == null) {
+            if (allowUntrackedSubunitSales && stockUnits == 0L && soldUnits == 0L && soldSubunits > 0L) {
+                // Products such as coffee or hot chocolate sold by cups do not have a meaningful
+                // container-to-cup conversion. Record their revenue without fictitious stock math.
+                return StockBalance(stockUnits, stockSubunits)
+            }
             require(soldUnits <= stockUnits) { "No hay suficientes unidades completas. Disponibles: $stockUnits." }
             // When a product is sold in unknown portions (for example, scoops from a tub), keep
             // container stock honest: at least one container must remain available for the portions
