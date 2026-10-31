@@ -92,3 +92,8 @@ Consulta [`docs/API_CONTRACT_V1.md`](docs/API_CONTRACT_V1.md). El backend Node.j
 ## Firma y versión Release
 
 La versión está configurada como `1.2.0` (`versionCode 3`). El Workflow genera Debug y un APK Release firmado. La clave privada no está dentro del código ni del ZIP del proyecto. Configura los secretos `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` y `ANDROID_KEY_PASSWORD` siguiendo [`docs/RELEASE_SIGNING.md`](docs/RELEASE_SIGNING.md). Sin esos secretos, el workflow detiene Release en lugar de entregar un APK sin firma como si fuera distribuible.
+
+
+## Versión 1.2.1
+
+Se corrigió la obtención del token FCM usando la API pública `FirebaseMessaging.getInstance()` después de inicializar la app Firebase predeterminada. El versionCode es 4.

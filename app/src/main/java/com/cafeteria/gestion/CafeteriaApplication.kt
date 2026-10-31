@@ -65,7 +65,7 @@ class CafeteriaApplication : Application() {
         if (!apiClient.isConfigured) return false
         val firebase = configuredFirebaseApp() ?: return false
         return try {
-            FirebaseMessaging.getInstance(firebase).token.addOnSuccessListener { token ->
+            FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
                 CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                     runCatching {
                         val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
