@@ -8,6 +8,10 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,6 +19,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,6 +56,7 @@ import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -79,6 +87,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -191,176 +200,125 @@ fun CafeteriaApp(viewModel: CafeteriaViewModel) {
 }
 
 @Composable
-private fun StaffLoginScreen(
-    busy: Boolean,
-    apiConfigured: Boolean,
-    error: String?,
-    message: String?,
-    onLogin: (String, String) -> Unit,
-    onBrowseAsCustomer: () -> Unit,
-    onBack: () -> Unit = onBrowseAsCustomer
-) {
-    var identifier by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 26.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Box(
-            modifier = Modifier.size(86.dp).clip(RoundedCornerShape(28.dp)).background(accentContainerColor()),
-            contentAlignment = Alignment.Center
-        ) { Icon(Icons.Outlined.Storefront, null, tint = accentColor(), modifier = Modifier.size(46.dp)) }
-        Spacer(Modifier.height(20.dp))
-        Text("YuriCoofe", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-        Spacer(Modifier.height(6.dp))
-        Text("Gestión interna del negocio", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-        Spacer(Modifier.height(30.dp))
-        Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(2.dp)) {
-            Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("Acceso del personal", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                OutlinedTextField(
-                    value = identifier, onValueChange = { identifier = it }, modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Nick o usuario") }, singleLine = true
-                )
-                OutlinedTextField(
-                    value = password, onValueChange = { password = it }, modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Contraseña") }, singleLine = true, visualTransformation = PasswordVisualTransformation()
-                )
-                if (!apiConfigured) {
-                    InfoPanel(
-                        title = "Servicio pendiente de configuración",
-                        message = "Las pantallas y el almacenamiento local están preparados. El acceso real se habilitará al conectar la dirección del backend; esta app no incluye cuentas ni datos inventados.",
-                        type = PanelType.INFO
-                    )
-                }
-                if (!error.isNullOrBlank()) InfoPanel("No se pudo iniciar sesión", error, PanelType.ERROR)
-                if (!message.isNullOrBlank()) InfoPanel("Información", message, PanelType.SUCCESS)
-                Button(onClick = { onLogin(identifier, password) }, enabled = !busy, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(15.dp)) {
-                    if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
-                    else Text("Entrar", fontWeight = FontWeight.SemiBold)
-                }
-                TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth(), enabled = !busy) {
-                    Text("Volver a la tienda")
-                }
-            }
-        }
-        Spacer(Modifier.height(16.dp))
-        Text("Acceso reservado al equipo de YuriCoofe.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-    }
-}
-
-
-@Composable
 private fun CustomerAuthScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
     var registerMode by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf("") }
+    var nameOrUser by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
-    Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 26.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(30.dp),
-            color = Color(0xFF3B281E),
-            shadowElevation = 5.dp
+    val colors = MaterialTheme.colorScheme
+
+    Box(Modifier.fillMaxSize().background(colors.background)) {
+        Box(
+            Modifier.fillMaxWidth().height(310.dp)
+                .background(Brush.linearGradient(listOf(Color(0xFF2C1B13), Color(0xFF65432D), Color(0xFF9A704C))))
+        )
+        Column(
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    Modifier.size(76.dp).clip(RoundedCornerShape(25.dp)).background(Color(0xFF5B3E2D)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Outlined.Storefront, null, tint = Color(0xFFF0D9BC), modifier = Modifier.size(42.dp))
-                }
-                Spacer(Modifier.height(16.dp))
-                Text("YuriCoofe", color = Color(0xFFFFF5E9), fontWeight = FontWeight.Bold, fontSize = 30.sp, letterSpacing = 0.2.sp)
-                Spacer(Modifier.height(5.dp))
-                Text("Tu cafetería, siempre cerca", color = Color(0xFFE7D2BD), fontSize = 14.sp)
-                Spacer(Modifier.height(16.dp))
-                Box(Modifier.width(42.dp).height(3.dp).clip(CircleShape).background(Color(0xFFC39262)))
+            Spacer(Modifier.height(20.dp))
+            Box(
+                Modifier.size(76.dp).clip(RoundedCornerShape(26.dp))
+                    .background(Color.White.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Outlined.Storefront, null, tint = Color(0xFFFFE8CF), modifier = Modifier.size(42.dp))
             }
-        }
-        Spacer(Modifier.height(22.dp))
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(26.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-        ) {
-            Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
-                Text(
-                    if (registerMode) "Crea tu cuenta" else "Bienvenido de nuevo",
-                    fontSize = 23.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    if (registerMode) "Regístrate con tu nombre y crea una contraseña para acceder a la tienda."
-                    else "Inicia sesión para ver el catálogo, las ofertas y las novedades.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 19.sp
-                )
-                OutlinedTextField(
-                    value = name, onValueChange = { name = it }, modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Tu nombre") }, placeholder = { Text("Ej. María Rodríguez") },
-                    singleLine = true, shape = RoundedCornerShape(15.dp)
-                )
-                if (registerMode) Text("Este será el nombre con el que iniciarás sesión.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-                OutlinedTextField(
-                    value = password, onValueChange = { password = it }, modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Contraseña") }, singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    shape = RoundedCornerShape(15.dp)
-                )
-                if (registerMode) {
+            Spacer(Modifier.height(14.dp))
+            Text("YuriCoofe", color = Color(0xFFFFF4E7), fontSize = 31.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.2.sp)
+            Spacer(Modifier.height(7.dp))
+            Text("Una pausa rica empieza aquí.", color = Color(0xFFE8D4C0), fontSize = 14.sp)
+            Spacer(Modifier.height(30.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth().animateContentSize(),
+                shape = RoundedCornerShape(30.dp),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+                border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.45f))
+            ) {
+                Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text(
+                        if (registerMode) "Crea tu cuenta" else "Bienvenido",
+                        fontSize = 25.sp, fontWeight = FontWeight.Bold, color = colors.onSurface
+                    )
+                    Text(
+                        if (registerMode) "Regístrate con tu nombre y una contraseña para guardar tus preferencias y consultar la cafetería."
+                        else "Entra con tu nombre o usuario y descubre lo que tenemos preparado.",
+                        color = colors.onSurfaceVariant, fontSize = 13.sp, lineHeight = 19.sp
+                    )
                     OutlinedTextField(
-                        value = confirmPassword, onValueChange = { confirmPassword = it }, modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Repite la contraseña") }, singleLine = true,
+                        value = nameOrUser, onValueChange = { nameOrUser = it }, modifier = Modifier.fillMaxWidth(),
+                        label = { Text(if (registerMode) "Tu nombre" else "Nombre o usuario") },
+                        placeholder = { Text(if (registerMode) "Ej. María Rodríguez" else "Escribe tu nombre o usuario") },
+                        singleLine = true, shape = RoundedCornerShape(17.dp)
+                    )
+                    OutlinedTextField(
+                        value = password, onValueChange = { password = it }, modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Contraseña") }, singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        shape = RoundedCornerShape(15.dp)
+                        shape = RoundedCornerShape(17.dp)
                     )
-                    Text("Usa al menos 10 caracteres. Podrás crear la cuenta sin conexión; se enviará al servidor al recuperar internet.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp)
-                }
-                if (!state.apiConfigured) {
-                    InfoPanel(
-                        title = "Cuenta local disponible",
-                        message = "Puedes crear tu cuenta en este teléfono. La información quedará protegida y se sincronizará cuando el servicio esté configurado y haya conexión.",
-                        type = PanelType.INFO
-                    )
-                }
-                if (!state.error.isNullOrBlank()) InfoPanel("No se pudo continuar", state.error, PanelType.ERROR)
-                if (!state.message.isNullOrBlank()) InfoPanel("Información", state.message, PanelType.SUCCESS)
-                Button(
-                    onClick = {
-                        if (registerMode) {
-                            if (password != confirmPassword) vm.showError("Las contraseñas no coinciden.")
-                            else vm.registerCustomer(name, password)
-                        } else vm.loginCustomer(name, password)
-                    },
-                    enabled = !state.busy && name.trim().isNotEmpty() && password.isNotEmpty() && (!registerMode || confirmPassword.isNotEmpty()),
-                    modifier = Modifier.fillMaxWidth().height(54.dp),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    if (state.busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
-                    else Text(if (registerMode) "Crear cuenta" else "Iniciar sesión", fontWeight = FontWeight.SemiBold)
-                }
-                TextButton(onClick = {
-                    registerMode = !registerMode
-                    password = ""
-                    confirmPassword = ""
-                    vm.clearMessage()
-                }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) {
-                    Text(if (registerMode) "Ya tengo una cuenta · Iniciar sesión" else "¿Es tu primera vez? Crear cuenta")
+                    if (registerMode) {
+                        OutlinedTextField(
+                            value = confirmPassword, onValueChange = { confirmPassword = it }, modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Repite la contraseña") }, singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            shape = RoundedCornerShape(17.dp)
+                        )
+                        Text(
+                            "Usa al menos 10 caracteres. Si no tienes internet, tu cuenta quedará guardada en este teléfono y se sincronizará al conectarte.",
+                            color = colors.onSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp
+                        )
+                    }
+                    if (!state.apiConfigured) {
+                        InfoPanel(
+                            title = "Modo local",
+                            message = "El acceso del equipo requiere conexión con el servicio. Las cuentas nuevas de clientes pueden guardarse en este teléfono sin conexión.",
+                            type = PanelType.INFO
+                        )
+                    } else if (!state.online && !registerMode) {
+                        InfoPanel(
+                            title = "Sin conexión",
+                            message = "Podrás entrar con una cuenta de cliente guardada previamente en este teléfono. El acceso del equipo necesita validar sus credenciales con el servidor.",
+                            type = PanelType.INFO
+                        )
+                    }
+                    if (!state.error.isNullOrBlank()) InfoPanel("No se pudo continuar", state.error, PanelType.ERROR)
+                    if (!state.message.isNullOrBlank()) InfoPanel("Información", state.message, PanelType.SUCCESS)
+                    Button(
+                        onClick = {
+                            if (registerMode) {
+                                when {
+                                    password.length < 10 -> vm.showError("La contraseña debe tener al menos 10 caracteres.")
+                                    password != confirmPassword -> vm.showError("Las contraseñas no coinciden.")
+                                    else -> vm.registerCustomer(nameOrUser, password)
+                                }
+                            } else vm.login(nameOrUser, password)
+                        },
+                        enabled = !state.busy && nameOrUser.trim().isNotEmpty() && password.isNotEmpty() && (!registerMode || confirmPassword.isNotEmpty()),
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(18.dp),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 5.dp, pressedElevation = 1.dp)
+                    ) {
+                        if (state.busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                        else Text(if (registerMode) "Crear cuenta" else "Entrar", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    }
+                    TextButton(onClick = {
+                        registerMode = !registerMode
+                        password = ""
+                        confirmPassword = ""
+                        vm.clearMessage()
+                    }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) {
+                        Text(if (registerMode) "Ya tengo una cuenta · Iniciar sesión" else "¿Primera vez aquí? Crear cuenta", color = colors.primary)
+                    }
                 }
             }
+            Spacer(Modifier.height(20.dp))
+            Text("Un solo acceso para todos.", color = colors.onSurfaceVariant, fontSize = 12.sp)
         }
-        Spacer(Modifier.height(10.dp))
-        TextButton(onClick = vm::openStaffLogin, enabled = !state.busy) {
-            Text("Acceso del personal", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-        }
-        Text("Tu espacio para consultar productos y ofertas de la cafetería.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
     }
 }
 
@@ -371,18 +329,7 @@ private data class NavEntry(val screen: String, val label: String, val icon: Ima
 private fun MainShell(state: CafeteriaUiState, vm: CafeteriaViewModel) {
     val session = state.session
     if (session == null) {
-        when (state.screen) {
-            SCREEN_LOGIN -> StaffLoginScreen(
-                busy = state.busy,
-                apiConfigured = state.apiConfigured,
-                error = state.error,
-                message = state.message,
-                onLogin = vm::login,
-                onBrowseAsCustomer = vm::openCustomerAuth,
-                onBack = vm::openCustomerAuth
-            )
-            else -> CustomerAuthScreen(state, vm)
-        }
+        CustomerAuthScreen(state, vm)
         return
     }
     val nav = when (session.role) {
@@ -433,7 +380,7 @@ private fun MainShell(state: CafeteriaUiState, vm: CafeteriaViewModel) {
             )
         },
         bottomBar = {
-            if (state.screen != SCREEN_LOGIN) NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 nav.forEach { entry ->
                     NavigationBarItem(
                         selected = state.screen == entry.screen,
@@ -473,15 +420,6 @@ private fun MainShell(state: CafeteriaUiState, vm: CafeteriaViewModel) {
                 SCREEN_TEAM -> TeamScreen(state, vm)
                 SCREEN_CUSTOMER_CATALOG -> CustomerCatalogScreen(state, vm)
                 SCREEN_SETTINGS -> SettingsScreen(state, vm)
-                SCREEN_LOGIN -> StaffLoginScreen(
-                    busy = state.busy,
-                    apiConfigured = state.apiConfigured,
-                    error = state.error,
-                    message = state.message,
-                    onLogin = vm::login,
-                    onBrowseAsCustomer = { vm.setScreen(SCREEN_CUSTOMER_CATALOG) },
-                    onBack = { vm.setScreen(SCREEN_SETTINGS) }
-                )
                 else -> if (session.role == Roles.CUSTOMER) CustomerCatalogScreen(state, vm) else DashboardScreen(state, vm)
             }
         }
@@ -512,11 +450,6 @@ private fun SettingsScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
                 }
                 OutlinedButton(onClick = vm::logout, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Outlined.Logout, null); Spacer(Modifier.width(8.dp)); Text("Cerrar sesión")
-                }
-                if (isCustomer) {
-                    TextButton(onClick = vm::openStaffLogin, modifier = Modifier.fillMaxWidth()) {
-                        Text("Acceso del personal", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
                 }
             }
         }
@@ -1357,89 +1290,212 @@ private fun CustomerCatalogScreen(state: CafeteriaUiState, vm: CafeteriaViewMode
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted || Build.VERSION.SDK_INT < 33) vm.enableNotifications()
     }
-    val categories = remember(state.products) { listOf("Todas") + state.products.filter { it.publicVisible }.map { it.categoryName }.distinct().sorted() }
+    val categories = remember(state.products) {
+        listOf("Todas") + state.products.filter { it.publicVisible }.map { it.categoryName }.distinct().sorted()
+    }
     val filtered = state.products.filter {
         it.publicVisible &&
             (state.search.isBlank() || it.name.contains(state.search, true) || it.categoryName.contains(state.search, true) || it.description.contains(state.search, true)) &&
             (state.category == "Todas" || it.categoryName == state.category)
     }
+    val espresso = Color(0xFF352319)
+    val caramel = Color(0xFF8B6244)
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-        ) {
-            Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("YuriCoofe", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                    Text("Tu cafetería de confianza, a un toque de distancia.", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 12.sp, lineHeight = 17.sp)
-                    Text("Productos frescos, buenos precios y novedades.", color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f), fontSize = 11.sp)
-                }
-                Box(Modifier.size(58.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.75f)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Outlined.Storefront, null, tint = accentColor(), modifier = Modifier.size(32.dp))
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(13.dp)
+    ) {
+        AnimatedVisibility(visible = true, enter = fadeIn() + slideInVertically(initialOffsetY = { it / 10 })) {
+            Box(
+                Modifier.fillMaxWidth().height(154.dp).clip(RoundedCornerShape(27.dp))
+                    .background(Brush.linearGradient(listOf(espresso, Color(0xFF68452F), caramel)))
+            ) {
+                Box(Modifier.size(170.dp).align(Alignment.CenterEnd).offset(x = 34.dp, y = 35.dp)
+                    .clip(CircleShape).background(Color.White.copy(alpha = 0.07f)))
+                Box(Modifier.size(105.dp).align(Alignment.TopEnd).offset(x = 15.dp, y = (-34).dp)
+                    .clip(CircleShape).background(Color(0xFFD8B28D).copy(alpha = 0.10f)))
+                Row(Modifier.fillMaxSize().padding(start = 21.dp, end = 18.dp, top = 19.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("Una pausa que sabe bien", color = Color(0xFFFFF3E5), fontSize = 21.sp, fontWeight = FontWeight.Bold, lineHeight = 25.sp)
+                        Text("Descubre tus favoritos de hoy.", color = Color(0xFFEEDBC8), fontSize = 12.sp)
+                        Surface(color = Color(0xFFFFEAD5).copy(alpha = 0.16f), shape = RoundedCornerShape(50.dp)) {
+                            Text("Hecho con cariño", color = Color(0xFFFFEAD5), fontSize = 10.sp, modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp))
+                        }
+                    }
+                    Box(
+                        Modifier.size(82.dp).clip(CircleShape)
+                            .background(Brush.radialGradient(listOf(Color(0xFFDDBB96).copy(alpha = 0.42f), Color(0xFF4E3425)))),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Outlined.Storefront, null, tint = Color(0xFFFFEBD5), modifier = Modifier.size(41.dp))
+                    }
                 }
             }
         }
+
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
-                state.search,
-                vm::setSearch,
+                value = state.search,
+                onValueChange = vm::setSearch,
                 modifier = Modifier.weight(1f),
-                leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                placeholder = { Text("Buscar pan, café, confituras…") },
+                leadingIcon = { Icon(Icons.Outlined.Search, null, tint = caramel) },
+                placeholder = { Text("Busca café, pan, confituras…", fontSize = 13.sp) },
                 singleLine = true,
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(19.dp),
+                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f),
+                    focusedBorderColor = MaterialTheme.colorScheme.primary
+                )
             )
-            Spacer(Modifier.width(6.dp))
-            IconButton(onClick = vm::refreshProducts) { Icon(Icons.Outlined.Refresh, "Actualizar catálogo", tint = accentColor()) }
-        }
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            categories.forEach { category ->
-                FilterChip(selected = state.category == category, onClick = { vm.setCategory(category) }, label = { Text(category) })
+            Spacer(Modifier.width(8.dp))
+            Box(
+                Modifier.size(50.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary)
+                    .clickable(onClick = vm::refreshProducts),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Outlined.Refresh, "Actualizar catálogo", tint = MaterialTheme.colorScheme.onPrimary)
             }
         }
-        OutlinedButton(
-            onClick = {
-                if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                } else vm.enableNotifications()
-            },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Icon(Icons.Outlined.NotificationsActive, null); Spacer(Modifier.width(8.dp)); Text("Recibir ofertas y avisos")
+
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            categories.forEach { category ->
+                FilterChip(
+                    selected = state.category == category,
+                    onClick = { vm.setCategory(category) },
+                    label = { Text(category, fontSize = 12.sp) },
+                    shape = RoundedCornerShape(50.dp),
+                    border = if (state.category == category) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                )
+            }
         }
+
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f))
+                .clickable {
+                    if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else vm.enableNotifications()
+                }
+                .padding(horizontal = 15.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+                Icon(Icons.Outlined.NotificationsActive, null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(19.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Recibe ofertas y novedades", color = MaterialTheme.colorScheme.onSecondaryContainer, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Icon(Icons.Outlined.ArrowUpward, null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(15.dp))
+        }
+
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Productos disponibles", fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                Text("${filtered.size} artículo(s) en el catálogo", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                Text("Para disfrutar", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                Text("${filtered.size} ${if (filtered.size == 1) "producto" else "productos"}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
             }
-            if (!state.online) Text("Modo sin conexión", fontSize = 10.sp, color = warningColor())
+            if (!state.online) {
+                Surface(color = MaterialTheme.colorScheme.tertiaryContainer, shape = RoundedCornerShape(50.dp)) {
+                    Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.CloudOff, null, tint = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.size(13.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Sin conexión", fontSize = 10.sp, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                    }
+                }
+            }
         }
+
         if (filtered.isEmpty()) {
-            EmptyPanel(
-                if (state.search.isNotBlank() || state.category != "Todas") "No encontramos ese producto" else "El catálogo está vacío por ahora",
-                "El catálogo muestra únicamente productos publicados por la cafetería. Vuelve a actualizar cuando tengas conexión."
-            )
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.TopCenter) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                    shape = RoundedCornerShape(25.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 5.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 23.dp, vertical = 27.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        Box(
+                            Modifier.size(70.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Outlined.Inventory2, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(34.dp))
+                        }
+                        Text(
+                            if (state.search.isNotBlank() || state.category != "Todas") "No encontramos ese producto" else "Estamos preparando el escaparate",
+                            fontSize = 17.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            if (state.search.isNotBlank() || state.category != "Todas") "Prueba con otra búsqueda o categoría."
+                            else "Los productos publicados aparecerán aquí con sus fotos, precios y disponibilidad.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        if (state.online) {
+                            OutlinedButton(onClick = vm::refreshProducts, shape = RoundedCornerShape(50.dp)) {
+                                Icon(Icons.Outlined.Refresh, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(7.dp)); Text("Actualizar catálogo")
+                            }
+                        } else {
+                            Text("Vuelve a conectarte para consultar las novedades.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
         } else {
-            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 18.dp)) {
-                items(filtered, key = { it.id }) { product ->
-                    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(1.dp)) {
-                        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.Top) {
-                            ProductImage(product.imageUrl, Modifier.size(96.dp))
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Text(product.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                Text(product.categoryName, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                product.unitPriceCup?.let { Text("${formatCup(it)} / ${product.unitName}", fontWeight = FontWeight.SemiBold, color = accentColor()) }
-                                product.subunitPriceCup?.let { Text("${formatCup(it)} / ${product.subunitName ?: "porción"}", fontWeight = FontWeight.SemiBold, color = accentColor()) }
-                                product.unitPriceTransfer?.let { Text("${formatCup(it)} por transferencia · ${product.unitName}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                                product.subunitPriceTransfer?.let { Text("${formatCup(it)} por transferencia · ${product.subunitName ?: "porción"}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(13.dp),
+                contentPadding = PaddingValues(bottom = 18.dp)
+            ) {
+                gridItems(filtered, key = { it.id }) { product ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().animateContentSize(),
+                        shape = RoundedCornerShape(22.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 5.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(9.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Box {
+                                ProductImage(product.imageUrl, Modifier.fillMaxWidth().height(122.dp))
+                                Surface(
+                                    modifier = Modifier.align(Alignment.TopStart).padding(7.dp),
+                                    color = Color(0xFF2F2119).copy(alpha = 0.82f),
+                                    shape = RoundedCornerShape(50.dp)
+                                ) {
+                                    Text(product.categoryName, color = Color(0xFFFFF0DF), fontSize = 9.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                            Text(product.name, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 17.sp)
+                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                product.unitPriceCup?.let {
+                                    Text("${formatCup(it)}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    Text("por ${product.unitName}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                                }
+                                product.subunitPriceCup?.let {
+                                    Text("${formatCup(it)} / ${product.subunitName ?: "porción"}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            product.unitPriceTransfer?.let {
+                                Text("Transferencia: ${formatCup(it)}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            product.subunitPriceTransfer?.let {
+                                Text("Transferencia porción: ${formatCup(it)}", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Box(Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF4C9A70)))
                                 Text(
-                                    if (product.saleMode == SaleModes.SUBUNIT && product.subunitsPerUnit == null && product.stockUnits == 0L) "Disponible por porciones" else "Disponible",
-                                    fontSize = 11.sp,
-                                    color = successColor(),
-                                    fontWeight = FontWeight.Medium
+                                    when {
+                                        product.saleMode == SaleModes.SUBUNIT && product.subunitsPerUnit == null && product.stockUnits == 0L -> "Por porciones"
+                                        product.stockUnits > 0L -> "Disponible"
+                                        else -> "Agotado"
+                                    },
+                                    fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }

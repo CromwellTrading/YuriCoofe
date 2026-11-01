@@ -22,7 +22,6 @@ const val SCREEN_TEAM = "TEAM"
 const val SCREEN_CUSTOMER_CATALOG = "CUSTOMER_CATALOG"
 const val SCREEN_CUSTOMER_AUTH = "CUSTOMER_AUTH"
 const val SCREEN_SETTINGS = "SETTINGS"
-const val SCREEN_LOGIN = "STAFF_LOGIN"
 
 data class CafeteriaUiState(
     val loading: Boolean = true,
@@ -57,6 +56,7 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
 
     init {
         viewModelScope.launch {
+            app.settingsStore.applyVisualRevampDefaults()
             val savedSession = runCatching { repository.restoreSession() }.getOrNull()
             val activeSession = savedSession
             val cachedAll = runCatching { repository.getCachedProducts() }.getOrDefault(emptyList())
@@ -114,21 +114,6 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
         refreshAll()
     }
 
-    fun loginCustomer(identifier: String, password: String) = runBusy("No se pudo iniciar sesión.") {
-        val session = repository.loginCustomer(identifier, password)
-        if (session.role != Roles.CUSTOMER) app.registerPushTokenIfConfigured()
-        state.value = state.value.copy(
-            session = session,
-            screen = when (session.role) {
-                Roles.OWNER -> SCREEN_HOME
-                Roles.WORKER -> SCREEN_SELL
-                else -> SCREEN_CUSTOMER_CATALOG
-            },
-            message = if (session.accessToken.isBlank()) "Sesión iniciada en este teléfono. Se validará con el servidor cuando haya conexión." else "Sesión iniciada.",
-            error = null
-        )
-        refreshAll()
-    }
 
     fun registerCustomer(displayName: String, password: String) = runBusy("No se pudo crear la cuenta.") {
         val session = repository.registerCustomer(displayName, password)
@@ -146,9 +131,6 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
         state.value = state.value.copy(screen = SCREEN_CUSTOMER_AUTH, error = null, message = null)
     }
 
-    fun openStaffLogin() {
-        state.value = state.value.copy(screen = SCREEN_LOGIN, error = null, message = null)
-    }
 
     fun setAppearance(value: String) {
         viewModelScope.launch { app.settingsStore.setAppearance(value) }

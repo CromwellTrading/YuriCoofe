@@ -1,10 +1,10 @@
-# Firma de versión Release (1.3.0)
+# Firma de versión Release (1.4.0)
 
-La app usa `applicationId=com.cafeteria.gestion`, `versionName=1.3.0` y `versionCode=5`.
+La app usa `applicationId=com.cafeteria.gestion`, `versionName=1.4.0` y `versionCode=6`.
 
 El workflow `.github/workflows/android.yml` compila:
-- `cafeteria-debug-apk` para pruebas;
-- `cafeteria-release-signed-apk-v1.3.0` para distribución, solo si la clave de firma está configurada.
+- `yuricoofe-debug-apk-v1.4.0` para pruebas;
+- `yuricoofe-release-signed-apk-v1.4.0` para distribución, solo si la clave de firma está configurada.
 
 ## Secretos requeridos en GitHub
 
@@ -29,6 +29,6 @@ Se entregan por separado el archivo `cafeteria-release.jks`, su representación 
 2. Configura los cuatro secretos anteriores.
 3. Abre `Actions → Android build and release → Run workflow`.
 4. El workflow valida URL y keystore, ejecuta `testDebugUnitTest`, genera Debug y compila Release firmado.
-5. Descarga el artefacto `cafeteria-release-signed-apk-v1.3.0`.
+5. Descarga el artefacto `yuricoofe-release-signed-apk-v1.4.0`.
 
 No instales un APK Release firmado encima de un Debug con firma de depuración diferente. Para la primera instalación Release, desinstala la versión Debug (eso borra los datos locales de esa app) o conserva el mismo canal/firma desde el principio. Una vez instalada la versión Release firmada con esta clave, todas las actualizaciones deben usar la misma clave y alias.

@@ -1,10 +1,10 @@
 # Cafetería — aplicación Android
 
-Aplicación Android nativa (Kotlin + Jetpack Compose) para gestionar el inventario y las ventas de una cafetería. Versión de producto `1.3.0` (`versionCode 5`). Al abrir, los clientes inician sesión o crean su cuenta; el acceso del personal se mantiene como opción secundaria y los roles reales los determina el servidor.
+Aplicación Android nativa (Kotlin + Jetpack Compose) para gestionar el inventario y las ventas de una cafetería. Versión de producto `1.4.0` (`versionCode 6`). Al abrir, todos usan el mismo formulario de nombre/usuario y contraseña; el backend reconoce si la cuenta es de la dueña, una trabajadora o un cliente, y los roles reales los determina el servidor.
 
 ## Qué incluye la aplicación
 
-- Tres roles: `OWNER` (dueña), `WORKER` (trabajadora) y `CUSTOMER` (cliente). El cliente inicia sesión con su nombre y contraseña; la app separa visualmente el acceso del personal y nunca permite elegir un rol manualmente.
+- Tres roles: `OWNER` (dueña), `WORKER` (trabajadora) y `CUSTOMER` (cliente). El cliente inicia sesión con su nombre y contraseña; la dueña y las trabajadoras usan el mismo formulario con el identificador que creó la dueña. El backend devuelve el rol y la app nunca permite elegirlo manualmente.
 - Catálogo conectado a API: fotografía, descripción, categorías, precios CUP por efectivo y precios opcionales por transferencia, estado público y existencias.
 - Inventario por unidades y/o subunidades; conversión automática cuando se conoce la equivalencia entre ambas.
 - Registro local de ventas con atribución de trabajadora, hora original con offset, método de pago, precios aplicados y un identificador UUID.
@@ -69,7 +69,7 @@ En GitHub abre `Settings → Secrets and variables → Actions → Variables →
 
 Debe ser una **Variable**, no un Secret, porque el workflow lee `${{ vars.API_BASE_URL }}`. Después de guardarla, inicia manualmente `Actions → Android build and release → Run workflow`; cambiar una variable no inicia una compilación automáticamente.
 
-La compilación comprueba ahora la variable antes de construir el APK y muestra en los logs qué host se inyectó. Si falta o el formato es incorrecto, el workflow falla expresamente en lugar de generar un APK que muestre “Servicio pendiente de configuración”. Descarga el artefacto `cafeteria-debug-apk` de esa ejecución nueva e instala ese APK.
+La compilación comprueba ahora la variable antes de construir el APK y muestra en los logs qué host se inyectó. Si falta o el formato es incorrecto, el workflow falla expresamente en lugar de generar un APK que muestre “Servicio pendiente de configuración”. Descarga el artefacto `yuricoofe-debug-apk-v1.4.0` de esa ejecución nueva e instala ese APK.
 
 Si el aviso sigue apareciendo, el teléfono está ejecutando una compilación anterior o el APK se generó desde otro repositorio/flujo. Comprueba que el último run ejecutó el paso `Validate backend URL` y que sus logs muestran `Backend URL injected into APK: https://.../`.
 
@@ -91,7 +91,7 @@ Consulta [`docs/API_CONTRACT_V1.md`](docs/API_CONTRACT_V1.md). El backend Node.j
 
 ## Firma y versión Release
 
-La versión está configurada como `1.3.0` (`versionCode 5`). El Workflow genera Debug y un APK Release firmado. La clave privada no está dentro del código ni del ZIP del proyecto. Configura los secretos `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` y `ANDROID_KEY_PASSWORD` siguiendo [`docs/RELEASE_SIGNING.md`](docs/RELEASE_SIGNING.md). Sin esos secretos, el workflow detiene Release en lugar de entregar un APK sin firma como si fuera distribuible.
+La versión está configurada como `1.4.0` (`versionCode 6`). El Workflow genera Debug y un APK Release firmado. La clave privada no está dentro del código ni del ZIP del proyecto. Configura los secretos `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` y `ANDROID_KEY_PASSWORD` siguiendo [`docs/RELEASE_SIGNING.md`](docs/RELEASE_SIGNING.md). Sin esos secretos, el workflow detiene Release en lugar de entregar un APK sin firma como si fuera distribuible.
 
 
 ## Versión 1.2.1
@@ -101,8 +101,17 @@ Se corrigió la obtención del token FCM usando la API pública `FirebaseMessagi
 
 ## Versión 1.3.0
 
-- Nueva bienvenida de YuriCoofe en estilo espresso y crema, con acceso de cliente como flujo principal.
-- Alta de cliente con nombre y contraseña, inicio de sesión específico para clientes y acceso del personal separado. El servidor asigna los roles; la app no presenta un selector de permisos.
+- Se incorporó la pantalla inicial y el registro de clientes con nombre y contraseña. En 1.4.0 se unifica ese acceso con el personal.
 - Alta de cliente offline: el perfil y su verificador cifrado/local se conservan en el teléfono. La contraseña pendiente se protege con Android Keystore y WorkManager la envía al endpoint público al recuperar conexión. Si se pierde la respuesta del servidor, el reintento inicia sesión con la misma cuenta en vez de duplicarla.
 - El nombre visible del cliente puede repetirse; el servidor guarda un identificador interno único que no se muestra al usuario.
 - Versionado `versionCode 5`, `versionName 1.3.0`.
+
+
+## Versión 1.4.0
+
+- Rediseño de la tienda con una sola aparición de la marca, banner espresso/caramelo, degradados, sombras, tarjetas con fotografía en dos columnas y controles compactos.
+- El tema claro Café (crema/espresso) se aplica una sola vez al actualizar, conservando después las preferencias que el usuario elija.
+- Un único formulario permite entrar a dueña, trabajadoras y clientes. El servidor reconoce el rol real por las credenciales creadas por la dueña o por el nombre y contraseña del cliente.
+- Se elimina el acceso separado del personal. El alta pública sigue creando exclusivamente cuentas `CUSTOMER`.
+- Android `versionCode 6`, `versionName 1.4.0`; backend `1.2.0`.
+- Detalles: [`docs/CHANGELOG_1.4.0.md`](docs/CHANGELOG_1.4.0.md).

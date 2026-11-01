@@ -18,7 +18,7 @@ Este documento describe el contrato v1 implementado por el backend Node.js/Postg
 
 ### `POST /api/v1/auth/login`
 
-Request: `{"identifier":"usuario-o-correo", "password":"..."}`.
+Request: `{"identifier":"nombre-o-usuario", "password":"..."}`. El endpoint es el acceso único para los tres roles: `OWNER` y `WORKER` se resuelven por el identificador creado por la dueña; `CUSTOMER` se resuelve por el nombre visible más la contraseña. El rol nunca lo elige la app y siempre lo devuelve el backend.
 
 Data de respuesta:
 
@@ -41,7 +41,7 @@ Request: `{"displayName":"María Rodríguez","identifier":"customer-<UUID>","pas
 
 ### `POST /api/v1/auth/customer-login` (público)
 
-Request: `{"displayName":"María Rodríguez","password":"..."}`. Busca y autentica únicamente cuentas con rol `CUSTOMER` dentro del negocio público configurado. Nunca inicia sesión como `OWNER` o `WORKER`; el personal conserva el endpoint `/auth/login` y sus credenciales actuales.
+Request legado para compatibilidad con versiones anteriores: `{"displayName":"María Rodríguez","password":"..."}`. Las versiones nuevas usan `/auth/login` para todas las cuentas.
 
 La app también admite crear una cuenta sin conexión: guarda el verificador local de contraseña y una copia temporal cifrada con Android Keystore para el primer envío. WorkManager reintenta el registro al recuperar conectividad y elimina la contraseña cifrada solo después de la confirmación del servidor. La cuenta provisional solo se puede validar en ese teléfono hasta que el servidor la registre. Se permite una única alta offline pendiente por instalación para evitar sobrescribir una cuenta todavía no sincronizada.
 
