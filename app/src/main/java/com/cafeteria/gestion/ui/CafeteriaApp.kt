@@ -116,7 +116,9 @@ fun CafeteriaApp(viewModel: CafeteriaViewModel) {
         "LIGHT" -> false
         else -> systemDark
     }
+    val coffeePalette = state.palette == "COFFEE"
     val primary = when (state.palette) {
+        "COFFEE" -> if (dark) Color(0xFFD7AD83) else Color(0xFF70472F)
         "GREEN" -> Color(0xFF23815E)
         "BLUE" -> Color(0xFF3267B7)
         "ORANGE" -> Color(0xFFC16A2B)
@@ -124,13 +126,32 @@ fun CafeteriaApp(viewModel: CafeteriaViewModel) {
         else -> Color(0xFF6250D8)
     }
     val primaryContainer = when (state.palette) {
+        "COFFEE" -> if (dark) Color(0xFF4B3426) else Color(0xFFEAD9C7)
         "GREEN" -> if (dark) Color(0xFF244C3D) else Color(0xFFDDF3E9)
         "BLUE" -> if (dark) Color(0xFF263F66) else Color(0xFFE1EBFF)
         "ORANGE" -> if (dark) Color(0xFF5C3D27) else Color(0xFFFFE9D8)
         "ROSE" -> if (dark) Color(0xFF5A3043) else Color(0xFFFFE2EC)
         else -> if (dark) Color(0xFF40366D) else Color(0xFFECE8FF)
     }
-    val scheme = if (dark) {
+    val scheme = if (coffeePalette && dark) {
+        darkColorScheme(
+            primary = Color(0xFFD7AD83), onPrimary = Color(0xFF2B1D14),
+            primaryContainer = Color(0xFF4B3426), onPrimaryContainer = Color(0xFFF5E6D7),
+            background = Color(0xFF17120F), surface = Color(0xFF241C17),
+            onSurface = Color(0xFFF6ECE3), surfaceVariant = Color(0xFF352920),
+            onSurfaceVariant = Color(0xFFCBB9A8), secondary = Color(0xFFD6A779),
+            tertiary = Color(0xFFC78D61), error = Color(0xFFFFB4AB)
+        )
+    } else if (coffeePalette) {
+        lightColorScheme(
+            primary = Color(0xFF70472F), onPrimary = Color(0xFFFFF8F1),
+            primaryContainer = Color(0xFFEAD9C7), onPrimaryContainer = Color(0xFF3D291D),
+            background = Color(0xFFF6F0E8), surface = Color(0xFFFFFCF8),
+            onSurface = Color(0xFF30251F), surfaceVariant = Color(0xFFEDE3D8),
+            onSurfaceVariant = Color(0xFF79695D), secondary = Color(0xFFA87443),
+            tertiary = Color(0xFF8E6448), error = Color(0xFFB3261E)
+        )
+    } else if (dark) {
         darkColorScheme(
             primary = primary,
             onPrimary = Color.White,
@@ -170,7 +191,7 @@ fun CafeteriaApp(viewModel: CafeteriaViewModel) {
 }
 
 @Composable
-private fun LoginScreen(
+private fun StaffLoginScreen(
     busy: Boolean,
     apiConfigured: Boolean,
     error: String?,
@@ -191,9 +212,9 @@ private fun LoginScreen(
             contentAlignment = Alignment.Center
         ) { Icon(Icons.Outlined.Storefront, null, tint = accentColor(), modifier = Modifier.size(46.dp)) }
         Spacer(Modifier.height(20.dp))
-        Text("Cafetería", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+        Text("YuriCoofe", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
         Spacer(Modifier.height(6.dp))
-        Text("Inventario, ventas y avisos en un solo lugar", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+        Text("Gestión interna del negocio", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
         Spacer(Modifier.height(30.dp))
         Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(2.dp)) {
             Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -225,7 +246,121 @@ private fun LoginScreen(
             }
         }
         Spacer(Modifier.height(16.dp))
-        Text("Acceso exclusivo para administradora y trabajadoras.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+        Text("Acceso reservado al equipo de YuriCoofe.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+    }
+}
+
+
+@Composable
+private fun CustomerAuthScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
+    var registerMode by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 26.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(30.dp),
+            color = Color(0xFF3B281E),
+            shadowElevation = 5.dp
+        ) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier.size(76.dp).clip(RoundedCornerShape(25.dp)).background(Color(0xFF5B3E2D)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Outlined.Storefront, null, tint = Color(0xFFF0D9BC), modifier = Modifier.size(42.dp))
+                }
+                Spacer(Modifier.height(16.dp))
+                Text("YuriCoofe", color = Color(0xFFFFF5E9), fontWeight = FontWeight.Bold, fontSize = 30.sp, letterSpacing = 0.2.sp)
+                Spacer(Modifier.height(5.dp))
+                Text("Tu cafetería, siempre cerca", color = Color(0xFFE7D2BD), fontSize = 14.sp)
+                Spacer(Modifier.height(16.dp))
+                Box(Modifier.width(42.dp).height(3.dp).clip(CircleShape).background(Color(0xFFC39262)))
+            }
+        }
+        Spacer(Modifier.height(22.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(26.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                Text(
+                    if (registerMode) "Crea tu cuenta" else "Bienvenido de nuevo",
+                    fontSize = 23.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    if (registerMode) "Regístrate con tu nombre y crea una contraseña para acceder a la tienda."
+                    else "Inicia sesión para ver el catálogo, las ofertas y las novedades.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 19.sp
+                )
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it }, modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Tu nombre") }, placeholder = { Text("Ej. María Rodríguez") },
+                    singleLine = true, shape = RoundedCornerShape(15.dp)
+                )
+                if (registerMode) Text("Este será el nombre con el que iniciarás sesión.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                OutlinedTextField(
+                    value = password, onValueChange = { password = it }, modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Contraseña") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    shape = RoundedCornerShape(15.dp)
+                )
+                if (registerMode) {
+                    OutlinedTextField(
+                        value = confirmPassword, onValueChange = { confirmPassword = it }, modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Repite la contraseña") }, singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        shape = RoundedCornerShape(15.dp)
+                    )
+                    Text("Usa al menos 10 caracteres. Podrás crear la cuenta sin conexión; se enviará al servidor al recuperar internet.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp)
+                }
+                if (!state.apiConfigured) {
+                    InfoPanel(
+                        title = "Cuenta local disponible",
+                        message = "Puedes crear tu cuenta en este teléfono. La información quedará protegida y se sincronizará cuando el servicio esté configurado y haya conexión.",
+                        type = PanelType.INFO
+                    )
+                }
+                if (!state.error.isNullOrBlank()) InfoPanel("No se pudo continuar", state.error, PanelType.ERROR)
+                if (!state.message.isNullOrBlank()) InfoPanel("Información", state.message, PanelType.SUCCESS)
+                Button(
+                    onClick = {
+                        if (registerMode) {
+                            if (password != confirmPassword) vm.showError("Las contraseñas no coinciden.")
+                            else vm.registerCustomer(name, password)
+                        } else vm.loginCustomer(name, password)
+                    },
+                    enabled = !state.busy && name.trim().isNotEmpty() && password.isNotEmpty() && (!registerMode || confirmPassword.isNotEmpty()),
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    if (state.busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                    else Text(if (registerMode) "Crear cuenta" else "Iniciar sesión", fontWeight = FontWeight.SemiBold)
+                }
+                TextButton(onClick = {
+                    registerMode = !registerMode
+                    password = ""
+                    confirmPassword = ""
+                    vm.clearMessage()
+                }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) {
+                    Text(if (registerMode) "Ya tengo una cuenta · Iniciar sesión" else "¿Es tu primera vez? Crear cuenta")
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        TextButton(onClick = vm::openStaffLogin, enabled = !state.busy) {
+            Text("Acceso del personal", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+        }
+        Text("Tu espacio para consultar productos y ofertas de la cafetería.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
     }
 }
 
@@ -234,7 +369,22 @@ private data class NavEntry(val screen: String, val label: String, val icon: Ima
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MainShell(state: CafeteriaUiState, vm: CafeteriaViewModel) {
-    val session = state.session ?: return
+    val session = state.session
+    if (session == null) {
+        when (state.screen) {
+            SCREEN_LOGIN -> StaffLoginScreen(
+                busy = state.busy,
+                apiConfigured = state.apiConfigured,
+                error = state.error,
+                message = state.message,
+                onLogin = vm::login,
+                onBrowseAsCustomer = vm::openCustomerAuth,
+                onBack = vm::openCustomerAuth
+            )
+            else -> CustomerAuthScreen(state, vm)
+        }
+        return
+    }
     val nav = when (session.role) {
         Roles.OWNER -> listOf(
             NavEntry(SCREEN_HOME, "Inicio", Icons.Outlined.Home),
@@ -263,9 +413,9 @@ private fun MainShell(state: CafeteriaUiState, vm: CafeteriaViewModel) {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Cafetería", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text("YuriCoofe", fontWeight = FontWeight.Bold, fontSize = 20.sp)
                         Text(
-                            when (session.role) { Roles.OWNER -> "Administración"; Roles.WORKER -> "Punto de venta"; else -> "Catálogo público" },
+                            when (session.role) { Roles.OWNER -> "Administración"; Roles.WORKER -> "Punto de venta"; else -> "Tu cafetería" },
                             fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -283,7 +433,7 @@ private fun MainShell(state: CafeteriaUiState, vm: CafeteriaViewModel) {
             )
         },
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+            if (state.screen != SCREEN_LOGIN) NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 nav.forEach { entry ->
                     NavigationBarItem(
                         selected = state.screen == entry.screen,
@@ -323,7 +473,7 @@ private fun MainShell(state: CafeteriaUiState, vm: CafeteriaViewModel) {
                 SCREEN_TEAM -> TeamScreen(state, vm)
                 SCREEN_CUSTOMER_CATALOG -> CustomerCatalogScreen(state, vm)
                 SCREEN_SETTINGS -> SettingsScreen(state, vm)
-                SCREEN_LOGIN -> LoginScreen(
+                SCREEN_LOGIN -> StaffLoginScreen(
                     busy = state.busy,
                     apiConfigured = state.apiConfigured,
                     error = state.error,
@@ -341,7 +491,7 @@ private fun MainShell(state: CafeteriaUiState, vm: CafeteriaViewModel) {
 @Composable
 private fun SettingsScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
     val session = state.session
-    val isGuest = session == null || (session.role == Roles.CUSTOMER && session.accessToken.isBlank())
+    val isCustomer = session?.role == Roles.CUSTOMER
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -353,18 +503,19 @@ private fun SettingsScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
                     Icon(Icons.Outlined.Settings, null, tint = accentColor(), modifier = Modifier.size(28.dp))
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(if (isGuest) "Estás navegando como cliente" else session?.displayName.orEmpty(), fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                        Text(if (isGuest) "No necesitas una cuenta para consultar la tienda." else when (session?.role) { Roles.OWNER -> "Administradora"; Roles.WORKER -> "Trabajadora"; else -> "Cliente" }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                        Text(session?.displayName.orEmpty(), fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                        Text(when (session?.role) { Roles.OWNER -> "Administradora"; Roles.WORKER -> "Trabajadora"; else -> "Cliente" }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                     }
                 }
-                if (isGuest) {
-                    Button(onClick = vm::openStaffLogin, modifier = Modifier.fillMaxWidth()) {
-                        Text("Acceder como administradora o trabajadora")
-                    }
-                } else {
-                    Text("Usuario: ${session?.userId.orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                    OutlinedButton(onClick = vm::logout, modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.Outlined.Logout, null); Spacer(Modifier.width(8.dp)); Text("Cerrar sesión")
+                if (isCustomer && session?.accessToken.isNullOrBlank()) {
+                    InfoPanel("Perfil guardado en este teléfono", "Tu cuenta se validará y sincronizará con el servidor cuando haya conexión.", PanelType.INFO)
+                }
+                OutlinedButton(onClick = vm::logout, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Outlined.Logout, null); Spacer(Modifier.width(8.dp)); Text("Cerrar sesión")
+                }
+                if (isCustomer) {
+                    TextButton(onClick = vm::openStaffLogin, modifier = Modifier.fillMaxWidth()) {
+                        Text("Acceso del personal", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -394,6 +545,7 @@ private fun SettingsScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
                     Text("Color principal", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 }
                 val palettes = listOf(
+                    Triple("COFFEE", "Café", Color(0xFF70472F)),
                     Triple("PURPLE", "Violeta", Color(0xFF6250D8)),
                     Triple("GREEN", "Verde", Color(0xFF23815E)),
                     Triple("BLUE", "Azul", Color(0xFF3267B7)),
@@ -1219,9 +1371,9 @@ private fun CustomerCatalogScreen(state: CafeteriaUiState, vm: CafeteriaViewMode
         ) {
             Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("La tienda", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                    Text("Mira qué tenemos hoy antes de salir de casa.", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 12.sp, lineHeight = 17.sp)
-                    Text("Consulta productos, precios y novedades.", color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f), fontSize = 11.sp)
+                    Text("YuriCoofe", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                    Text("Tu cafetería de confianza, a un toque de distancia.", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 12.sp, lineHeight = 17.sp)
+                    Text("Productos frescos, buenos precios y novedades.", color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f), fontSize = 11.sp)
                 }
                 Box(Modifier.size(58.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.75f)), contentAlignment = Alignment.Center) {
                     Icon(Icons.Outlined.Storefront, null, tint = accentColor(), modifier = Modifier.size(32.dp))

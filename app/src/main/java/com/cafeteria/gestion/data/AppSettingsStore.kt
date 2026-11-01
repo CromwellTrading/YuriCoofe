@@ -10,8 +10,8 @@ import kotlinx.coroutines.flow.map
 private val Context.cafeteriaSettings by preferencesDataStore(name = "cafeteria_app_settings")
 
 data class AppSettings(
-    val appearance: String = "SYSTEM",
-    val palette: String = "PURPLE"
+    val appearance: String = "LIGHT",
+    val palette: String = "COFFEE"
 )
 
 class AppSettingsStore(private val context: Context) {
@@ -22,8 +22,8 @@ class AppSettingsStore(private val context: Context) {
 
     val settings: Flow<AppSettings> = context.cafeteriaSettings.data.map { prefs ->
         AppSettings(
-            appearance = prefs[Keys.APPEARANCE]?.takeIf { it in setOf("SYSTEM", "LIGHT", "DARK") } ?: "SYSTEM",
-            palette = prefs[Keys.PALETTE]?.takeIf { it in setOf("PURPLE", "GREEN", "BLUE", "ORANGE", "ROSE") } ?: "PURPLE"
+            appearance = prefs[Keys.APPEARANCE]?.takeIf { it in setOf("SYSTEM", "LIGHT", "DARK") } ?: "LIGHT",
+            palette = prefs[Keys.PALETTE]?.takeIf { it in setOf("COFFEE", "PURPLE", "GREEN", "BLUE", "ORANGE", "ROSE") } ?: "COFFEE"
         )
     }
 
@@ -33,7 +33,7 @@ class AppSettingsStore(private val context: Context) {
     }
 
     suspend fun setPalette(value: String) {
-        require(value in setOf("PURPLE", "GREEN", "BLUE", "ORANGE", "ROSE"))
+        require(value in setOf("COFFEE", "PURPLE", "GREEN", "BLUE", "ORANGE", "ROSE"))
         context.cafeteriaSettings.edit { it[Keys.PALETTE] = value }
     }
 }

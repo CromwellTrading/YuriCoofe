@@ -14,6 +14,8 @@ data class ApiEnvelope<T>(
 )
 
 data class LoginRequest(val identifier: String, val password: String)
+data class RegisterCustomerRequest(val displayName: String, val identifier: String, val password: String)
+data class CustomerLoginRequest(val displayName: String, val password: String)
 data class AuthResponse(
     val accessToken: String,
     val userId: String,

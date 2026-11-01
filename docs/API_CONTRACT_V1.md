@@ -35,6 +35,16 @@ Data de respuesta:
 
 `businessTimeZone` debe ser un identificador IANA. `POST /api/v1/auth/logout` invalida la sesión cuando corresponda. `GET /api/v1/auth/me` devuelve los datos de la sesión vigente.
 
+### `POST /api/v1/auth/register-customer` (público)
+
+Request: `{"displayName":"María Rodríguez","identifier":"customer-<UUID>","password":"..."}`. Crea exclusivamente una cuenta `CUSTOMER`. Android genera el identificador interno único; nunca se muestra al usuario. El nombre visible puede repetirse. La contraseña debe tener al menos 10 caracteres. El servidor aplica un límite de registros por conexión/IP.
+
+### `POST /api/v1/auth/customer-login` (público)
+
+Request: `{"displayName":"María Rodríguez","password":"..."}`. Busca y autentica únicamente cuentas con rol `CUSTOMER` dentro del negocio público configurado. Nunca inicia sesión como `OWNER` o `WORKER`; el personal conserva el endpoint `/auth/login` y sus credenciales actuales.
+
+La app también admite crear una cuenta sin conexión: guarda el verificador local de contraseña y una copia temporal cifrada con Android Keystore para el primer envío. WorkManager reintenta el registro al recuperar conectividad y elimina la contraseña cifrada solo después de la confirmación del servidor. La cuenta provisional solo se puede validar en ese teléfono hasta que el servidor la registre. Se permite una única alta offline pendiente por instalación para evitar sobrescribir una cuenta todavía no sincronizada.
+
 ## Productos e inventario
 
 ### `GET /api/v1/products`

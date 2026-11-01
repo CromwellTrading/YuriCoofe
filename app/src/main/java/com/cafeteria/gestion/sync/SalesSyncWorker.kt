@@ -20,6 +20,16 @@ class SalesSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val app = applicationContext as CafeteriaApplication
         if (!app.apiClient.isConfigured) return@withContext Result.success()
+        // Customer registration is a separate public outbox. It must still sync after a logout,
+        // and never be allowed to replace a different active staff session.
+        if (runCatching { app.sessionStore.hasPendingCustomerRegistration() }.getOrDefault(false)) {
+            try {
+                app.repository.syncPendingCustomerRegistration()
+            } catch (_: Exception) {
+                // Keep the encrypted payload for a later retry; never delete an unconfirmed signup.
+                return@withContext Result.retry()
+            }
+        }
         val session = app.sessionStore.getSession() ?: return@withContext Result.success()
         val salesDao = app.database.saleQueueDao()
         val productDao = app.database.productQueueDao()

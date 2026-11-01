@@ -1,17 +1,17 @@
 # Cafetería — aplicación Android
 
-Aplicación Android nativa (Kotlin + Jetpack Compose) para gestionar el inventario y las ventas de una cafetería. Versión de producto `1.2.0` (`versionCode 3`). La tienda pública abre directamente sin pedir registro; el personal entra desde Ajustes.
+Aplicación Android nativa (Kotlin + Jetpack Compose) para gestionar el inventario y las ventas de una cafetería. Versión de producto `1.3.0` (`versionCode 5`). Al abrir, los clientes inician sesión o crean su cuenta; el acceso del personal se mantiene como opción secundaria y los roles reales los determina el servidor.
 
 ## Qué incluye la aplicación
 
-- Tres roles: `OWNER` (dueña), `WORKER` (trabajadora) y `CUSTOMER` (cliente). El visitante consulta la tienda sin cuenta; los accesos de dueña/trabajadora están en Ajustes.
+- Tres roles: `OWNER` (dueña), `WORKER` (trabajadora) y `CUSTOMER` (cliente). El cliente inicia sesión con su nombre y contraseña; la app separa visualmente el acceso del personal y nunca permite elegir un rol manualmente.
 - Catálogo conectado a API: fotografía, descripción, categorías, precios CUP por efectivo y precios opcionales por transferencia, estado público y existencias.
 - Inventario por unidades y/o subunidades; conversión automática cuando se conoce la equivalencia entre ambas.
 - Registro local de ventas con atribución de trabajadora, hora original con offset, método de pago, precios aplicados y un identificador UUID.
 - Colas locales duraderas con Room: guarda ventas y cambios de catálogo (alta/edición de productos e imágenes) antes de contactar al servidor. Las ventas y su deducción local se guardan en una transacción; WorkManager transmite ambas colas al recuperar conexión, ordenadas por fecha, con el mismo ID, hora original y contenido para reintentos idempotentes.
 - Historial de ventas, estado de sincronización, avisos programados, administración de trabajadoras, ajustes de inventario y pantallas de estadísticas.
-- Almacenamiento cifrado del token de acceso con Android Keystore.
-- Temas Sistema/Claro/Oscuro y cinco paletas de color guardadas localmente.
+- Almacenamiento cifrado del token de acceso con Android Keystore. Las cuentas de cliente creadas offline usan un verificador PBKDF2 con sal; la contraseña pendiente de primer registro se cifra con Android Keystore y se elimina de la cola al confirmar el servidor.
+- Identidad visual cálida Café (espresso/crema) predeterminada, modo claro/oscuro y seis paletas guardadas localmente.
 - Ventas por porciones para café/chocolate preparado, incluso sin inventario de recipientes, registrando cada vaso y su importe sin inventar conversiones. Para productos con recipientes y rendimiento desconocido se conserva el número de recipientes y se exige revisión manual al vaciarlo.
 - Caché local distingue el indicador público de disponibilidad del inventario exacto: una consulta pública no sobrescribe las existencias privadas descargadas previamente.
 - Build Release preparado para firma permanente mediante una clave de firma guardada como secretos de GitHub Actions.
@@ -91,9 +91,18 @@ Consulta [`docs/API_CONTRACT_V1.md`](docs/API_CONTRACT_V1.md). El backend Node.j
 
 ## Firma y versión Release
 
-La versión está configurada como `1.2.0` (`versionCode 3`). El Workflow genera Debug y un APK Release firmado. La clave privada no está dentro del código ni del ZIP del proyecto. Configura los secretos `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` y `ANDROID_KEY_PASSWORD` siguiendo [`docs/RELEASE_SIGNING.md`](docs/RELEASE_SIGNING.md). Sin esos secretos, el workflow detiene Release en lugar de entregar un APK sin firma como si fuera distribuible.
+La versión está configurada como `1.3.0` (`versionCode 5`). El Workflow genera Debug y un APK Release firmado. La clave privada no está dentro del código ni del ZIP del proyecto. Configura los secretos `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` y `ANDROID_KEY_PASSWORD` siguiendo [`docs/RELEASE_SIGNING.md`](docs/RELEASE_SIGNING.md). Sin esos secretos, el workflow detiene Release en lugar de entregar un APK sin firma como si fuera distribuible.
 
 
 ## Versión 1.2.1
 
 Se corrigió la obtención del token FCM usando la API pública `FirebaseMessaging.getInstance()` después de inicializar la app Firebase predeterminada. El versionCode es 4.
+
+
+## Versión 1.3.0
+
+- Nueva bienvenida de YuriCoofe en estilo espresso y crema, con acceso de cliente como flujo principal.
+- Alta de cliente con nombre y contraseña, inicio de sesión específico para clientes y acceso del personal separado. El servidor asigna los roles; la app no presenta un selector de permisos.
+- Alta de cliente offline: el perfil y su verificador cifrado/local se conservan en el teléfono. La contraseña pendiente se protege con Android Keystore y WorkManager la envía al endpoint público al recuperar conexión. Si se pierde la respuesta del servidor, el reintento inicia sesión con la misma cuenta en vez de duplicarla.
+- El nombre visible del cliente puede repetirse; el servidor guarda un identificador interno único que no se muestra al usuario.
+- Versionado `versionCode 5`, `versionName 1.3.0`.

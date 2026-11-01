@@ -53,6 +53,117 @@ class CafeRepository(
         return session
     }
 
+    /** Customer registration is allowed offline. The local account is usable on this device
+     * immediately and its encrypted registration payload is sent by WorkManager when online. */
+    suspend fun registerCustomer(displayName: String, password: String): UserSession {
+        val name = displayName.trim()
+        require(name.length in 3..100) { "El nombre debe tener entre 3 y 100 caracteres para crear la cuenta." }
+        require(password.length in 10..200) { "La contraseña debe tener al menos 10 caracteres." }
+        require(!sessionStore.hasPendingCustomerRegistration()) {
+            "Hay una cuenta creada sin conexión que todavía espera enviarse al servidor. Inicia sesión con esa cuenta y conecta el teléfono para terminar la sincronización antes de crear otra."
+        }
+        val identifier = "customer-${UUID.randomUUID()}"
+        if (apiClient.isConfigured && isNetworkAvailable()) {
+            try {
+                val response = apiClient.service().registerCustomer(RegisterCustomerRequest(name, identifier, password))
+                if (!response.isSuccessful) throw apiError(response.code(), response.errorBody()?.string())
+                val auth = response.body()?.data ?: throw IllegalStateException("El servicio no devolvió la cuenta creada.")
+                val session = auth.toUserSession()
+                require(session.role == Roles.CUSTOMER) { "El servidor no creó una cuenta de cliente." }
+                sessionStore.saveCustomerCredentials(session, name, password)
+                SalesSyncScheduler.enqueueNow(appContext)
+                return session
+            } catch (error: java.io.IOException) {
+                // Treat a dropped/unstable connection as offline. The same credentials will be
+                // registered later, protected at rest with Android Keystore.
+            }
+        }
+        val local = sessionStore.saveLocalCustomerAccount(name, identifier, password)
+        SalesSyncScheduler.enqueueNow(appContext)
+        return local
+    }
+
+    /** Online customer login also works offline on a device that has previously stored a local
+     * password verifier. HTTP credential errors are never hidden by the offline fallback. */
+    suspend fun loginCustomer(identifier: String, password: String): UserSession {
+        require(identifier.isNotBlank()) { "Escribe tu nombre." }
+        require(password.isNotBlank()) { "Escribe tu contraseña." }
+        if (apiClient.isConfigured && isNetworkAvailable()) {
+            try {
+                val response = apiClient.service().customerLogin(CustomerLoginRequest(identifier.trim(), password))
+                if (!response.isSuccessful) {
+                    val failure = apiError(response.code(), response.errorBody()?.string())
+                    // Only a not-yet-synced local registration may fall back after an HTTP
+                    // authentication response. Existing server accounts must respect server
+                    // password changes and must not silently accept an old local password.
+                    val pendingRegistration = sessionStore.pendingCustomerRegistration()
+                    if (response.code() == 401 && pendingRegistration != null &&
+                        pendingRegistration.displayName.equals(identifier.trim(), ignoreCase = true) &&
+                        pendingRegistration.password == password) {
+                        val pendingLocal = sessionStore.verifyOfflineCustomer(identifier, password)
+                        if (pendingLocal != null) {
+                            sessionStore.save(pendingLocal)
+                            SalesSyncScheduler.enqueueNow(appContext)
+                            return pendingLocal
+                        }
+                    }
+                    throw failure
+                }
+                val auth = response.body()?.data ?: throw IllegalStateException("El servicio no devolvió una sesión válida.")
+                val session = auth.toUserSession()
+                if (session.role == Roles.CUSTOMER) sessionStore.saveCustomerCredentials(session, identifier, password)
+                else sessionStore.save(session)
+                SalesSyncScheduler.enqueueNow(appContext)
+                return session
+            } catch (error: java.io.IOException) {
+                // Network transport failed. Check the local PBKDF2 verifier below.
+            }
+        }
+        val local = sessionStore.verifyOfflineCustomer(identifier, password)
+            ?: throw IllegalStateException("No se pudo iniciar sesión sin conexión. Comprueba el nombre y la contraseña, o conéctate para validar la cuenta.")
+        sessionStore.save(local)
+        return local
+    }
+
+    suspend fun hasPendingCustomerRegistration(): Boolean = sessionStore.hasPendingCustomerRegistration()
+
+    /** Idempotent recovery: if the server accepted registration but its response was lost, a
+     * retry receives IDENTIFIER_IN_USE and then signs in with the exact same credentials. */
+    suspend fun syncPendingCustomerRegistration(): Boolean {
+        val pending = sessionStore.pendingCustomerRegistration()
+        if (pending == null) {
+            if (sessionStore.hasPendingCustomerRegistration()) {
+                throw IllegalStateException("La cuenta pendiente sigue protegida en el teléfono, pero no se pudo descifrar para enviarla. No se ha eliminado.")
+            }
+            return false
+        }
+        if (!apiClient.isConfigured || !isNetworkAvailable()) return false
+        val service = apiClient.service()
+        val register = service.registerCustomer(RegisterCustomerRequest(pending.displayName, pending.identifier, pending.password))
+        val auth = if (register.isSuccessful) {
+            register.body()?.data ?: throw IllegalStateException("El servidor no devolvió la cuenta registrada.")
+        } else if (register.code() == 409) {
+            val login = service.customerLogin(CustomerLoginRequest(pending.displayName, pending.password))
+            if (!login.isSuccessful) throw apiError(register.code(), register.errorBody()?.string())
+            login.body()?.data ?: throw IllegalStateException("El servidor no devolvió la sesión de cliente.")
+        } else {
+            throw apiError(register.code(), register.errorBody()?.string())
+        }
+        val serverSession = auth.toUserSession()
+        require(serverSession.role == Roles.CUSTOMER) { "La cuenta pendiente no corresponde a un cliente." }
+        sessionStore.completePendingCustomerRegistration(pending.localUserId, serverSession)
+        return true
+    }
+
+    private fun com.cafeteria.gestion.data.remote.AuthResponse.toUserSession() = UserSession(
+        userId = userId,
+        displayName = displayName,
+        role = role,
+        accessToken = accessToken,
+        businessId = businessId,
+        businessTimeZone = businessTimeZone ?: "America/Havana"
+    )
+
     suspend fun logout() {
         runCatching { apiClient.service().logout() }
         sessionStore.clear()

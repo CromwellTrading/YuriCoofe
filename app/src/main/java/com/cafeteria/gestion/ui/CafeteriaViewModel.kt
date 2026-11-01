@@ -20,6 +20,7 @@ const val SCREEN_REPORTS = "REPORTS"
 const val SCREEN_ANNOUNCEMENTS = "ANNOUNCEMENTS"
 const val SCREEN_TEAM = "TEAM"
 const val SCREEN_CUSTOMER_CATALOG = "CUSTOMER_CATALOG"
+const val SCREEN_CUSTOMER_AUTH = "CUSTOMER_AUTH"
 const val SCREEN_SETTINGS = "SETTINGS"
 const val SCREEN_LOGIN = "STAFF_LOGIN"
 
@@ -33,7 +34,7 @@ data class CafeteriaUiState(
     val dashboard: DashboardSummary? = null,
     val announcements: List<Announcement> = emptyList(),
     val team: List<TeamMember> = emptyList(),
-    val screen: String = SCREEN_HOME,
+    val screen: String = SCREEN_CUSTOMER_AUTH,
     val message: String? = null,
     val error: String? = null,
     val apiConfigured: Boolean = false,
@@ -42,8 +43,8 @@ data class CafeteriaUiState(
     val category: String = "Todas",
     val sortBy: String = "Nombre",
     val ascending: Boolean = true,
-    val appearance: String = "SYSTEM",
-    val palette: String = "PURPLE"
+    val appearance: String = "LIGHT",
+    val palette: String = "COFFEE"
 )
 
 class CafeteriaViewModel(application: Application) : AndroidViewModel(application) {
@@ -57,7 +58,7 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
     init {
         viewModelScope.launch {
             val savedSession = runCatching { repository.restoreSession() }.getOrNull()
-            val activeSession = savedSession ?: guestSession()
+            val activeSession = savedSession
             val cachedAll = runCatching { repository.getCachedProducts() }.getOrDefault(emptyList())
             val cachedProducts = if (savedSession == null || savedSession.role == Roles.CUSTOMER) cachedAll.filter { it.publicVisible } else cachedAll
             val localSales = runCatching { repository.getRecentSales() }.getOrDefault(emptyList())
@@ -71,7 +72,8 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
                 screen = when (savedSession?.role) {
                     Roles.OWNER -> SCREEN_HOME
                     Roles.WORKER -> SCREEN_SELL
-                    else -> SCREEN_CUSTOMER_CATALOG
+                    Roles.CUSTOMER -> SCREEN_CUSTOMER_CATALOG
+                    else -> SCREEN_CUSTOMER_AUTH
                 },
                 online = repository.isNetworkAvailable()
             )
@@ -85,14 +87,9 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    private fun guestSession() = UserSession(
-        userId = "guest-${java.util.UUID.randomUUID()}",
-        displayName = "Visitante",
-        role = Roles.CUSTOMER,
-        accessToken = ""
-    )
 
     fun clearMessage() { state.value = state.value.copy(message = null, error = null) }
+    fun showError(message: String) { state.value = state.value.copy(error = message, message = null) }
     fun setScreen(screen: String) { state.value = state.value.copy(screen = screen, message = null, error = null) }
     fun setSearch(value: String) { state.value = state.value.copy(search = value) }
     fun setCategory(value: String) { state.value = state.value.copy(category = value) }
@@ -117,12 +114,36 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
         refreshAll()
     }
 
-    fun openCatalogAsGuest() {
-        viewModelScope.launch {
-            if (runCatching { repository.restoreSession() }.getOrNull() != null) runCatching { repository.logout() }
-            state.value = state.value.copy(session = guestSession(), screen = SCREEN_CUSTOMER_CATALOG, message = null, error = null)
-            refreshAll()
-        }
+    fun loginCustomer(identifier: String, password: String) = runBusy("No se pudo iniciar sesión.") {
+        val session = repository.loginCustomer(identifier, password)
+        if (session.role != Roles.CUSTOMER) app.registerPushTokenIfConfigured()
+        state.value = state.value.copy(
+            session = session,
+            screen = when (session.role) {
+                Roles.OWNER -> SCREEN_HOME
+                Roles.WORKER -> SCREEN_SELL
+                else -> SCREEN_CUSTOMER_CATALOG
+            },
+            message = if (session.accessToken.isBlank()) "Sesión iniciada en este teléfono. Se validará con el servidor cuando haya conexión." else "Sesión iniciada.",
+            error = null
+        )
+        refreshAll()
+    }
+
+    fun registerCustomer(displayName: String, password: String) = runBusy("No se pudo crear la cuenta.") {
+        val session = repository.registerCustomer(displayName, password)
+        state.value = state.value.copy(
+            session = session,
+            screen = SCREEN_CUSTOMER_CATALOG,
+            message = if (session.accessToken.isBlank()) "Tu cuenta quedó guardada en este teléfono y se enviará al servidor cuando vuelva la conexión." else "Tu cuenta de cliente está lista.",
+            error = null
+        )
+        SalesSyncScheduler.enqueueNow(getApplication())
+        refreshAll()
+    }
+
+    fun openCustomerAuth() {
+        state.value = state.value.copy(screen = SCREEN_CUSTOMER_AUTH, error = null, message = null)
     }
 
     fun openStaffLogin() {
@@ -144,13 +165,23 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun logout() = runBusy("No se pudo cerrar la sesión.") {
         repository.logout()
-        state.value = state.value.copy(session = guestSession(), message = "Sesión cerrada. Ahora estás viendo la tienda como visitante.", screen = SCREEN_CUSTOMER_CATALOG)
+        state.value = state.value.copy(session = null, message = "Sesión cerrada.", screen = SCREEN_CUSTOMER_AUTH)
         refreshAll()
     }
 
     fun refreshAll() {
         viewModelScope.launch {
-            state.value = state.value.copy(online = repository.isNetworkAvailable())
+            val onlineNow = repository.isNetworkAvailable()
+            state.value = state.value.copy(online = onlineNow)
+            if (onlineNow && repository.isBackendConfigured() && runCatching { repository.hasPendingCustomerRegistration() }.getOrDefault(false)) {
+                runCatching { repository.syncPendingCustomerRegistration() }
+            }
+            val storedSession = runCatching { repository.restoreSession() }.getOrNull()
+            val currentSession = state.value.session
+            if (currentSession?.role == Roles.CUSTOMER && currentSession.userId.startsWith("local-customer-") &&
+                storedSession?.role == Roles.CUSTOMER && !storedSession.userId.startsWith("local-customer-")) {
+                state.value = state.value.copy(session = storedSession, message = "Tu cuenta de cliente ya está sincronizada.")
+            }
             refreshProductsQuietly()
             refreshSalesQuietly()
             refreshAnnouncementsQuietly()

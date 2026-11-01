@@ -20,6 +20,12 @@ interface ApiService {
     @POST("api/v1/auth/login")
     suspend fun login(@Body body: LoginRequest): Response<ApiEnvelope<AuthResponse>>
 
+    @POST("api/v1/auth/register-customer")
+    suspend fun registerCustomer(@Body body: RegisterCustomerRequest): Response<ApiEnvelope<AuthResponse>>
+
+    @POST("api/v1/auth/customer-login")
+    suspend fun customerLogin(@Body body: CustomerLoginRequest): Response<ApiEnvelope<AuthResponse>>
+
     @POST("api/v1/auth/logout")
     suspend fun logout(): Response<ApiEnvelope<Boolean>>
 
