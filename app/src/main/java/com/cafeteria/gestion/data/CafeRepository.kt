@@ -16,6 +16,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.io.File
 import java.util.UUID
@@ -510,6 +511,41 @@ class CafeRepository(
         if (product.saleMode == SaleModes.SUBUNIT && product.subunitsPerUnit == null && product.stockUnits == 0L && units == 0L) return product
         val remaining = StockCalculator.afterSale(product.stockUnits, product.stockSubunits, product.subunitsPerUnit, units, subunits, allowUntrackedSubunitSales = product.saleMode == SaleModes.SUBUNIT)
         return product.copy(stockUnits = remaining.units, stockSubunits = remaining.subunits)
+    }
+
+    /**
+     * Product quantities from sales still waiting in this phone's durable outbox.
+     * They are intentionally kept separate from server-confirmed totals so the owner
+     * never mistakes an offline sale for a sale already accepted by the backend.
+     */
+    suspend fun getPendingProductSales(from: String, to: String): List<PendingProductSalesSummary> {
+        val session = sessionStore.getSession() ?: return emptyList()
+        if (session.role != Roles.OWNER) return emptyList()
+        val fromInstant = OffsetDateTime.parse(from).toInstant()
+        val toInstant = OffsetDateTime.parse(to).toInstant()
+        val records = queue.getUnresolved()
+        data class Key(val productName: String, val unitName: String, val subunitName: String?)
+        data class Totals(var units: Long = 0, var subunits: Long = 0, var cash: Long = 0, var transfer: Long = 0)
+        val totals = linkedMapOf<Key, Totals>()
+        records.forEach { record ->
+            if (record.status != "PENDING" && record.status != "NEEDS_REVIEW") return@forEach
+            val payload = runCatching { gson.fromJson(record.payloadJson, SalePayload::class.java) }.getOrNull() ?: return@forEach
+            val soldAt = runCatching { OffsetDateTime.parse(payload.soldAt).toInstant() }.getOrNull() ?: return@forEach
+            if (soldAt.isBefore(fromInstant) || !soldAt.isBefore(toInstant)) return@forEach
+            payload.items.orEmpty().forEach { item ->
+                val key = Key(item.productName, item.unitName, item.subunitName)
+                val total = totals.getOrPut(key) { Totals() }
+                total.units += item.unitQuantity
+                total.subunits += item.subunitQuantity
+                when (payload.paymentMethod) {
+                    PaymentMethods.CASH_CUP -> total.cash += item.totalCUP
+                    PaymentMethods.TRANSFER_CUP -> total.transfer += item.totalCUP
+                }
+            }
+        }
+        return totals.map { (key, value) ->
+            PendingProductSalesSummary(key.productName, key.unitName, key.subunitName, value.units, value.subunits, value.cash, value.transfer)
+        }.sortedByDescending { it.cashCup + it.transferCup }
     }
 
     suspend fun getRecentSales(): List<SaleSummary> {

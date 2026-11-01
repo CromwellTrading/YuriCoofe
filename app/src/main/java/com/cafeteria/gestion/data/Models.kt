@@ -91,13 +91,48 @@ data class SaleSummary(
     val error: String? = null
 )
 
+data class ProductSalesSummary(
+    val productId: String? = null,
+    val productName: String,
+    val unitName: String,
+    val subunitName: String? = null,
+    val unitQuantity: Long = 0,
+    val subunitQuantity: Long = 0,
+    val totalCup: Long = 0,
+    val cashCup: Long = 0,
+    val transferCup: Long = 0
+)
+
+data class WorkerSalesSummary(
+    val workerId: String,
+    val workerName: String,
+    val saleCount: Int = 0,
+    val cashCup: Long = 0,
+    val transferCup: Long = 0,
+    val totalCup: Long = 0,
+    val unitQuantity: Long = 0,
+    val subunitQuantity: Long = 0
+)
+
+data class PendingProductSalesSummary(
+    val productName: String,
+    val unitName: String,
+    val subunitName: String?,
+    val unitQuantity: Long,
+    val subunitQuantity: Long,
+    val cashCup: Long,
+    val transferCup: Long
+)
+
 data class DashboardSummary(
     val cashCup: Long = 0,
     val transferCup: Long = 0,
     val saleCount: Int = 0,
     val lowStockCount: Int = 0,
     val totalInventoryValueCash: Long? = null,
-    val totalInventoryValueTransfer: Long? = null
+    val totalInventoryValueTransfer: Long? = null,
+    val productSales: List<ProductSalesSummary> = emptyList(),
+    val workerSales: List<WorkerSalesSummary> = emptyList()
 )
 
 data class Announcement(

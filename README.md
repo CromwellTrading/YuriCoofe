@@ -1,6 +1,6 @@
 # Cafetería — aplicación Android
 
-Aplicación Android nativa (Kotlin + Jetpack Compose) para gestionar el inventario y las ventas de una cafetería. Versión de producto `1.4.0` (`versionCode 6`). Al abrir, todos usan el mismo formulario de nombre/usuario y contraseña; el backend reconoce si la cuenta es de la dueña, una trabajadora o un cliente, y los roles reales los determina el servidor.
+Aplicación Android nativa (Kotlin + Jetpack Compose) para gestionar el inventario y las ventas de una cafetería. Versión de producto `1.5.0` (`versionCode 7`). Al abrir, todos usan el mismo formulario de nombre/usuario y contraseña; el backend reconoce si la cuenta es de la dueña, una trabajadora o un cliente, y los roles reales los determina el servidor.
 
 ## Qué incluye la aplicación
 
@@ -9,7 +9,7 @@ Aplicación Android nativa (Kotlin + Jetpack Compose) para gestionar el inventar
 - Inventario por unidades y/o subunidades; conversión automática cuando se conoce la equivalencia entre ambas.
 - Registro local de ventas con atribución de trabajadora, hora original con offset, método de pago, precios aplicados y un identificador UUID.
 - Colas locales duraderas con Room: guarda ventas y cambios de catálogo (alta/edición de productos e imágenes) antes de contactar al servidor. Las ventas y su deducción local se guardan en una transacción; WorkManager transmite ambas colas al recuperar conexión, ordenadas por fecha, con el mismo ID, hora original y contenido para reintentos idempotentes.
-- Historial de ventas, estado de sincronización, avisos programados, administración de trabajadoras, ajustes de inventario y pantallas de estadísticas.
+- Historial de ventas, estado de sincronización, avisos programados, administración de trabajadoras y ajustes de inventario. Estadísticas por producto (unidades y porciones), método de pago y trabajadora, con filtros de hoy/semana/mes.
 - Almacenamiento cifrado del token de acceso con Android Keystore. Las cuentas de cliente creadas offline usan un verificador PBKDF2 con sal; la contraseña pendiente de primer registro se cifra con Android Keystore y se elimina de la cola al confirmar el servidor.
 - Identidad visual cálida Café (espresso/crema) predeterminada, modo claro/oscuro y seis paletas guardadas localmente.
 - Ventas por porciones para café/chocolate preparado, incluso sin inventario de recipientes, registrando cada vaso y su importe sin inventar conversiones. Para productos con recipientes y rendimiento desconocido se conserva el número de recipientes y se exige revisión manual al vaciarlo.
@@ -69,7 +69,7 @@ En GitHub abre `Settings → Secrets and variables → Actions → Variables →
 
 Debe ser una **Variable**, no un Secret, porque el workflow lee `${{ vars.API_BASE_URL }}`. Después de guardarla, inicia manualmente `Actions → Android build and release → Run workflow`; cambiar una variable no inicia una compilación automáticamente.
 
-La compilación comprueba ahora la variable antes de construir el APK y muestra en los logs qué host se inyectó. Si falta o el formato es incorrecto, el workflow falla expresamente en lugar de generar un APK que muestre “Servicio pendiente de configuración”. Descarga el artefacto `yuricoofe-debug-apk-v1.4.0` de esa ejecución nueva e instala ese APK.
+La compilación comprueba ahora la variable antes de construir el APK y muestra en los logs qué host se inyectó. Si falta o el formato es incorrecto, el workflow falla expresamente en lugar de generar un APK que muestre “Servicio pendiente de configuración”. Descarga el artefacto `yuricoofe-debug-apk-v1.5.0` de esa ejecución nueva e instala ese APK.
 
 Si el aviso sigue apareciendo, el teléfono está ejecutando una compilación anterior o el APK se generó desde otro repositorio/flujo. Comprueba que el último run ejecutó el paso `Validate backend URL` y que sus logs muestran `Backend URL injected into APK: https://.../`.
 
@@ -91,7 +91,7 @@ Consulta [`docs/API_CONTRACT_V1.md`](docs/API_CONTRACT_V1.md). El backend Node.j
 
 ## Firma y versión Release
 
-La versión está configurada como `1.4.0` (`versionCode 6`). El Workflow genera Debug y un APK Release firmado. La clave privada no está dentro del código ni del ZIP del proyecto. Configura los secretos `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` y `ANDROID_KEY_PASSWORD` siguiendo [`docs/RELEASE_SIGNING.md`](docs/RELEASE_SIGNING.md). Sin esos secretos, el workflow detiene Release en lugar de entregar un APK sin firma como si fuera distribuible.
+La versión está configurada como `1.5.0` (`versionCode 7`). El Workflow genera Debug y un APK Release firmado. La clave privada no está dentro del código ni del ZIP del proyecto. Configura los secretos `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` y `ANDROID_KEY_PASSWORD` siguiendo [`docs/RELEASE_SIGNING.md`](docs/RELEASE_SIGNING.md). Sin esos secretos, el workflow detiene Release en lugar de entregar un APK sin firma como si fuera distribuible.
 
 
 ## Versión 1.2.1
@@ -115,3 +115,12 @@ Se corrigió la obtención del token FCM usando la API pública `FirebaseMessagi
 - Se elimina el acceso separado del personal. El alta pública sigue creando exclusivamente cuentas `CUSTOMER`.
 - Android `versionCode 6`, `versionName 1.4.0`; backend `1.2.0`.
 - Detalles: [`docs/CHANGELOG_1.4.0.md`](docs/CHANGELOG_1.4.0.md).
+
+
+## Versión 1.5.0
+
+- Estadísticas de unidades y porciones vendidas agrupadas por producto, aunque no se controle stock.
+- Filtros de hoy, semana y mes, calculados según la zona horaria de la cafetería.
+- Importe por producto separado entre efectivo y transferencia; resumen por trabajadora.
+- Ventas pendientes locales separadas de las confirmadas por el servidor.
+- No requiere migración Room. Actualiza primero el backend a 1.3.0 para recibir los desgloses nuevos.

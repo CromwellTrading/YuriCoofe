@@ -3,6 +3,8 @@ package com.cafeteria.gestion.data.remote
 import com.cafeteria.gestion.data.Announcement
 import com.cafeteria.gestion.data.DashboardSummary
 import com.cafeteria.gestion.data.SalePayload
+import com.cafeteria.gestion.data.ProductSalesSummary
+import com.cafeteria.gestion.data.WorkerSalesSummary
 import com.cafeteria.gestion.data.TeamMember
 import com.cafeteria.gestion.data.local.ProductEntity
 
@@ -72,15 +74,48 @@ data class ProductDto(
     )
 }
 
+data class ProductSalesDto(
+    val productId: String? = null,
+    val productName: String,
+    val unitName: String,
+    val subunitName: String? = null,
+    val unitQuantity: Long = 0,
+    val subunitQuantity: Long = 0,
+    val totalCup: Long = 0,
+    val cashCup: Long = 0,
+    val transferCup: Long = 0
+) {
+    fun toModel() = ProductSalesSummary(productId, productName, unitName, subunitName, unitQuantity, subunitQuantity, totalCup, cashCup, transferCup)
+}
+
+data class WorkerSalesDto(
+    val workerId: String,
+    val workerName: String,
+    val saleCount: Int = 0,
+    val cashCup: Long = 0,
+    val transferCup: Long = 0,
+    val totalCup: Long = 0,
+    val unitQuantity: Long = 0,
+    val subunitQuantity: Long = 0
+) {
+    fun toModel() = WorkerSalesSummary(workerId, workerName, saleCount, cashCup, transferCup, totalCup, unitQuantity, subunitQuantity)
+}
+
 data class DashboardDto(
     val cashCup: Long = 0,
     val transferCup: Long = 0,
     val saleCount: Int = 0,
     val lowStockCount: Int = 0,
     val totalInventoryValueCash: Long? = null,
-    val totalInventoryValueTransfer: Long? = null
+    val totalInventoryValueTransfer: Long? = null,
+    val productSales: List<ProductSalesDto> = emptyList(),
+    val workerSales: List<WorkerSalesDto> = emptyList()
 ) {
-    fun toModel() = DashboardSummary(cashCup, transferCup, saleCount, lowStockCount, totalInventoryValueCash, totalInventoryValueTransfer)
+    fun toModel() = DashboardSummary(
+        cashCup, transferCup, saleCount, lowStockCount,
+        totalInventoryValueCash, totalInventoryValueTransfer,
+        productSales.map { it.toModel() }, workerSales.map { it.toModel() }
+    )
 }
 
 data class AnnouncementDto(

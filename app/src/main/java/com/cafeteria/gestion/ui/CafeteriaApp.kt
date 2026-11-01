@@ -1078,33 +1078,172 @@ private fun ReportsScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
     val businessZone = remember(state.session?.businessTimeZone) {
         runCatching { ZoneId.of(state.session?.businessTimeZone ?: "America/Havana") }.getOrDefault(ZoneId.of("America/Havana"))
     }
-    val today = LocalDate.now(businessZone).toString()
-    val salesToday = state.sales.filter { runCatching { OffsetDateTime.parse(it.soldAt).atZoneSameInstant(businessZone).toLocalDate().toString() == today }.getOrDefault(false) }
-    val cash = salesToday.filter { it.paymentMethod == PaymentMethods.CASH_CUP }.sumOf { it.totalCUP }
-    val transfer = salesToday.filter { it.paymentMethod == PaymentMethods.TRANSFER_CUP }.sumOf { it.totalCUP }
+    val today = LocalDate.now(businessZone)
+    val periodStart = when (state.reportPeriod) {
+        "WEEK" -> today.with(java.time.DayOfWeek.MONDAY)
+        "MONTH" -> today.withDayOfMonth(1)
+        else -> today
+    }
+    val periodEnd = when (state.reportPeriod) {
+        "WEEK" -> periodStart.plusWeeks(1)
+        "MONTH" -> periodStart.plusMonths(1)
+        else -> periodStart.plusDays(1)
+    }
+    val periodLabel = when (state.reportPeriod) {
+        "WEEK" -> "Semana del ${periodStart.format(DateTimeFormatter.ofPattern("dd/MM"))} al ${periodEnd.minusDays(1).format(DateTimeFormatter.ofPattern("dd/MM"))}"
+        "MONTH" -> periodStart.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale("es"))).replaceFirstChar { it.uppercase(Locale("es")) }
+        else -> "Hoy · ${today.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}"
+    }
+    val salesInPeriod = state.sales.filter {
+        runCatching {
+            val date = OffsetDateTime.parse(it.soldAt).atZoneSameInstant(businessZone).toLocalDate()
+            !date.isBefore(periodStart) && date.isBefore(periodEnd)
+        }.getOrDefault(false)
+    }
+    val cash = salesInPeriod.filter { it.paymentMethod == PaymentMethods.CASH_CUP && it.status != "NEEDS_REVIEW" }.sumOf { it.totalCUP }
+    val transfer = salesInPeriod.filter { it.paymentMethod == PaymentMethods.TRANSFER_CUP && it.status != "NEEDS_REVIEW" }.sumOf { it.totalCUP }
     val inventoryCash = state.dashboard?.totalInventoryValueCash
     val inventoryTransfer = state.dashboard?.totalInventoryValueTransfer
+    val confirmedProducts = state.dashboard?.productSales.orEmpty()
+    val workers = state.dashboard?.workerSales.orEmpty()
+
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { Text("Estadísticas", fontSize = 24.sp, fontWeight = FontWeight.Bold); Text("Resumen diario · $today", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }
-            IconButton(onClick = vm::refreshReports) { Icon(Icons.Outlined.Refresh, "Actualizar estadísticas") }
+            Column(Modifier.weight(1f)) {
+                Text("Estadísticas", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text(periodLabel, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+            }
+            IconButton(onClick = { vm.refreshReports() }) { Icon(Icons.Outlined.Refresh, "Actualizar estadísticas") }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = state.reportPeriod == "DAY", onClick = { vm.refreshReports("DAY") }, label = { Text("Hoy") })
+            FilterChip(selected = state.reportPeriod == "WEEK", onClick = { vm.refreshReports("WEEK") }, label = { Text("Esta semana") })
+            FilterChip(selected = state.reportPeriod == "MONTH", onClick = { vm.refreshReports("MONTH") }, label = { Text("Este mes") })
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SummaryCard("Efectivo hoy", formatCup(state.dashboard?.cashCup ?: cash), Icons.Outlined.PointOfSale, Modifier.weight(1f))
-            SummaryCard("Transferencias hoy", formatCup(state.dashboard?.transferCup ?: transfer), Icons.Outlined.CloudSync, Modifier.weight(1f))
+            SummaryCard("Efectivo", formatCup(state.dashboard?.cashCup ?: cash), Icons.Outlined.PointOfSale, Modifier.weight(1f))
+            SummaryCard("Transferencias", formatCup(state.dashboard?.transferCup ?: transfer), Icons.Outlined.CloudSync, Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SummaryCard("Operaciones hoy", (state.dashboard?.saleCount ?: salesToday.size).toString(), Icons.Outlined.Assessment, Modifier.weight(1f))
-            SummaryCard("Productos por reponer", (state.dashboard?.lowStockCount ?: state.products.count { !it.stockIsApproximate && !(it.saleMode == SaleModes.SUBUNIT && it.subunitsPerUnit == null && it.stockUnits == 0L) && it.stockUnits <= it.minimumStock }).toString(), Icons.Outlined.WarningAmber, Modifier.weight(1f), caution = true)
+            SummaryCard("Operaciones", (state.dashboard?.saleCount ?: salesInPeriod.count { it.status != "NEEDS_REVIEW" }).toString(), Icons.Outlined.Assessment, Modifier.weight(1f))
+            SummaryCard("Por reponer", (state.dashboard?.lowStockCount ?: state.products.count { !it.stockIsApproximate && !(it.saleMode == SaleModes.SUBUNIT && it.subunitsPerUnit == null && it.stockUnits == 0L) && it.stockUnits <= it.minimumStock }).toString(), Icons.Outlined.WarningAmber, Modifier.weight(1f), caution = true)
         }
+
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Productos vendidos", fontWeight = FontWeight.Bold, fontSize = 19.sp)
+                Text("Cantidades reales registradas, aunque no controles existencias.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (confirmedProducts.isEmpty()) {
+            EmptyPanel("Sin productos vendidos", "Cuando se registren ventas confirmadas, aquí verás cuántas unidades, vasos o porciones se vendieron en el periodo.")
+        } else {
+            confirmedProducts.forEach { ProductSalesReportCard(it) }
+        }
+
+        if (state.pendingProductSales.isNotEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.CloudOff, null, tint = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Pendientes o por revisar", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                            Text("Se guardaron en este teléfono y aún no están confirmadas en el servidor. Algunas pueden necesitar revisión.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        }
+                    }
+                    state.pendingProductSales.forEach { PendingProductSalesCard(it) }
+                }
+            }
+        }
+
+        if (workers.isNotEmpty()) {
+            Text("Ventas por trabajadora", fontWeight = FontWeight.Bold, fontSize = 19.sp)
+            workers.forEach { WorkerSalesReportCard(it) }
+        }
+
         Text("Valor potencial de existencias", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SummaryCard("Vendiendo en CUP", inventoryCash?.let(::formatCup) ?: "Sin dato", Icons.Outlined.Inventory2, Modifier.weight(1f))
+            SummaryCard("En efectivo", inventoryCash?.let(::formatCup) ?: "Sin dato", Icons.Outlined.Inventory2, Modifier.weight(1f))
             SummaryCard("Por transferencia", inventoryTransfer?.let(::formatCup) ?: "Sin dato", Icons.Outlined.CloudSync, Modifier.weight(1f))
         }
-        InfoPanel("Importante", "Estas cifras representan ventas registradas y valor estimado de venta, no ganancia neta. Para calcular ganancia se debe registrar el costo de compra de cada producto. Las ventas pendientes de sincronización se muestran localmente y no se sumarán como confirmadas por el servidor hasta su aceptación.", PanelType.INFO)
-        Text("Ventas locales del día", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
-        if (salesToday.isEmpty()) EmptyPanel("Sin operaciones para hoy", "El historial del día aparecerá aquí.") else salesToday.forEach { SaleRow(it, state.session?.businessTimeZone) }
+        InfoPanel("Importante", "Las cantidades vendidas se calculan desde cada artículo de las ventas, no desde el stock disponible. Por eso también se cuentan los vasos y porciones de productos sin control de existencias. Las ventas pendientes se muestran aparte para evitar duplicar o dar por confirmados datos que aún no llegaron al servidor.", PanelType.INFO)
+        Text("Operaciones del periodo", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+        if (salesInPeriod.isEmpty()) EmptyPanel("Sin operaciones locales", "El detalle de ventas registradas en este teléfono aparecerá aquí.") else salesInPeriod.forEach { SaleRow(it, state.session?.businessTimeZone) }
+    }
+}
+
+@Composable
+private fun ProductSalesReportCard(item: ProductSalesSummary) {
+    val quantity = buildList {
+        if (item.unitQuantity > 0) add("${item.unitQuantity} ${item.unitName}")
+        if (item.subunitQuantity > 0) add("${item.subunitQuantity} ${item.subunitName ?: "porciones"}")
+    }.joinToString(" · ").ifBlank { "Sin cantidad" }
+    Card(
+        modifier = Modifier.fillMaxWidth().animateContentSize(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(item.productName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(quantity, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                }
+                Text(formatCup(item.totalCup), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Efectivo", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                Text(formatCup(item.cashCup), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Transferencia", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                Text(formatCup(item.transferCup), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PendingProductSalesCard(item: PendingProductSalesSummary) {
+    val quantity = buildList {
+        if (item.unitQuantity > 0) add("${item.unitQuantity} ${item.unitName}")
+        if (item.subunitQuantity > 0) add("${item.subunitQuantity} ${item.subunitName ?: "porciones"}")
+    }.joinToString(" · ").ifBlank { "Sin cantidad" }
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), RoundedCornerShape(14.dp)).padding(11.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(item.productName, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            Text(quantity, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+        }
+        Text("Efectivo ${formatCup(item.cashCup)}  ·  Transferencia ${formatCup(item.transferCup)}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun WorkerSalesReportCard(item: WorkerSalesSummary) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(item.workerName, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text(formatCup(item.totalCup), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            }
+            Text("${item.saleCount} operaciones registradas", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Efectivo: ${formatCup(item.cashCup)}", fontSize = 12.sp)
+                Text("Transferencia: ${formatCup(item.transferCup)}", fontSize = 12.sp)
+            }
+        }
     }
 }
 

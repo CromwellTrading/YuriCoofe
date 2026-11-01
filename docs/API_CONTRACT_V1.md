@@ -216,3 +216,12 @@ La app obtiene el token de Firebase solo si las propiedades de Firebase están c
 - Rate limiting y mensajes de error públicos que no revelen infraestructura, proveedores, trazas, SQL ni secretos.
 - Imágenes servidas mediante URL segura; limitar tamaño/tipo y no confiar en el nombre local del fichero.
 - Copias de seguridad y pruebas de recuperación antes de producción.
+
+## Estadísticas de venta (`GET /api/v1/dashboard`)
+
+Solo disponible para `OWNER`. Los parámetros `from` y `to` son marcas ISO-8601 con offset; `from` se incluye y `to` se excluye. Desde backend 1.3.0, el objeto `data` incorpora:
+
+- `productSales[]`: cantidades agregadas por producto (`productName`, `unitName`, `subunitName`, `unitQuantity`, `subunitQuantity`) y los importes `totalCup`, `cashCup`, `transferCup`.
+- `workerSales[]`: `workerId`, `workerName`, `saleCount`, importes `cashCup`, `transferCup`, `totalCup` y cantidades agregadas `unitQuantity`, `subunitQuantity`.
+
+Las cantidades provienen de `sale_items` de ventas `ACCEPTED`, no del inventario actual; por tanto también cuentan vasos/tazas/porciones de productos configurados sin seguimiento de stock. Los importes de cada trabajadora se agregan desde `sales`, de forma que una venta con varios artículos no multiplica el total de dinero.

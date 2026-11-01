@@ -31,6 +31,8 @@ data class CafeteriaUiState(
     val sales: List<SaleSummary> = emptyList(),
     val pendingCount: Int = 0,
     val dashboard: DashboardSummary? = null,
+    val pendingProductSales: List<PendingProductSalesSummary> = emptyList(),
+    val reportPeriod: String = "DAY",
     val announcements: List<Announcement> = emptyList(),
     val team: List<TeamMember> = emptyList(),
     val screen: String = SCREEN_CUSTOMER_AUTH,
@@ -168,8 +170,9 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
             refreshSalesQuietly()
             refreshAnnouncementsQuietly()
             if (state.value.session?.role == Roles.OWNER) {
-                val (from, to) = todayRange()
+                val (from, to) = reportRange(state.value.reportPeriod)
                 runCatching { repository.loadDashboard(from, to) }.onSuccess { state.value = state.value.copy(dashboard = it) }
+                runCatching { repository.getPendingProductSales(from, to) }.onSuccess { state.value = state.value.copy(pendingProductSales = it) }
                 runCatching { repository.loadTeam() }.onSuccess { state.value = state.value.copy(team = it) }
             }
         }
@@ -187,10 +190,13 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun recordSale(product: ProductEntity, units: Long, subunits: Long, method: String, onSaved: () -> Unit = {}) = runBusy("No se pudo guardar la venta.") {
         repository.recordSale(product, units, subunits, method)
+        val (reportFrom, reportTo) = reportRange(state.value.reportPeriod)
+        val localPendingProducts = repository.getPendingProductSales(reportFrom, reportTo)
         state.value = state.value.copy(
             products = repository.getCachedProducts(),
             sales = repository.getRecentSales(),
             pendingCount = repository.pendingCount(),
+            pendingProductSales = localPendingProducts,
             message = "Venta guardada con su hora original. Se sincronizará al tener conexión.",
             error = null
         )
@@ -244,10 +250,18 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
         state.value = state.value.copy(sales = merged, pendingCount = repository.pendingCount())
     }
 
-    fun refreshReports() = runBusy("No se pudieron cargar las estadísticas.") {
-        val (from, to) = todayRange()
-        val summary = repository.loadDashboard(from, to)
-        state.value = state.value.copy(dashboard = summary, message = "Estadísticas actualizadas.")
+    fun refreshReports(period: String = state.value.reportPeriod) = runBusy("No se pudieron cargar las estadísticas.") {
+        val selectedPeriod = period.takeIf { it in setOf("DAY", "WEEK", "MONTH") } ?: "DAY"
+        state.value = state.value.copy(reportPeriod = selectedPeriod, dashboard = null, pendingProductSales = emptyList())
+        val (from, to) = reportRange(selectedPeriod)
+        val summary = runCatching { repository.loadDashboard(from, to) }.getOrNull()
+        val pending = repository.getPendingProductSales(from, to)
+        state.value = state.value.copy(dashboard = summary, pendingProductSales = pending)
+        if (summary == null) throw IllegalStateException(
+            if (pending.isNotEmpty()) "No se pudo consultar el servidor. Se muestran aparte las ventas pendientes guardadas en este teléfono."
+            else "No se pudo consultar el servidor. Comprueba la conexión e inténtalo de nuevo."
+        )
+        state.value = state.value.copy(message = "Estadísticas actualizadas.")
     }
 
     private suspend fun refreshAnnouncementsQuietly() {
@@ -312,11 +326,22 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    private fun todayRange(): Pair<String, String> {
-        val zone = java.time.ZoneId.of(state.value.session?.businessTimeZone ?: "America/Havana")
+    private fun reportRange(period: String): Pair<String, String> {
+        val zone = runCatching { java.time.ZoneId.of(state.value.session?.businessTimeZone ?: "America/Havana") }
+            .getOrDefault(java.time.ZoneId.of("America/Havana"))
         val today = java.time.LocalDate.now(zone)
-        val from = today.atStartOfDay(zone).toOffsetDateTime().toString()
-        val to = today.plusDays(1).atStartOfDay(zone).toOffsetDateTime().toString()
+        val start = when (period) {
+            "WEEK" -> today.with(java.time.DayOfWeek.MONDAY)
+            "MONTH" -> today.withDayOfMonth(1)
+            else -> today
+        }
+        val end = when (period) {
+            "WEEK" -> start.plusWeeks(1)
+            "MONTH" -> start.plusMonths(1)
+            else -> start.plusDays(1)
+        }
+        val from = start.atStartOfDay(zone).toOffsetDateTime().toString()
+        val to = end.atStartOfDay(zone).toOffsetDateTime().toString()
         return from to to
     }
 
