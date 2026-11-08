@@ -643,6 +643,7 @@ private fun SettingsScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StationScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
     val stats = state.stationStats
