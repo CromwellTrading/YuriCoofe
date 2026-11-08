@@ -47,7 +47,10 @@ data class ProductDto(
     val publicVisible: Boolean = true,
     val updatedAt: String? = null,
     val priceVersion: String = "",
-    val available: Boolean? = null
+    val available: Boolean? = null,
+    val inventoryRevision: Long? = null,
+    val active: Boolean = true,
+    val catalogRevision: Long? = null
 ) {
     /** Public catalog responses carry only availability, never exact stock levels. */
     fun toEntity(publicView: Boolean = false) = ProductEntity(
@@ -70,7 +73,10 @@ data class ProductDto(
         publicVisible = publicVisible,
         updatedAt = updatedAt.orEmpty(),
         priceVersion = priceVersion.ifBlank { updatedAt.orEmpty() },
-        stockIsApproximate = publicView
+        stockIsApproximate = publicView,
+        inventoryRevision = if (publicView) 0L else inventoryRevision ?: 0L,
+        active = active,
+        catalogRevision = if (publicView) 0L else catalogRevision ?: 0L
     )
 }
 
@@ -91,7 +97,7 @@ data class ProductSalesDto(
 data class WorkerSalesDto(
     val workerId: String,
     val workerName: String,
-    val saleCount: Int = 0,
+    val saleCount: Long = 0L,
     val cashCup: Long = 0,
     val transferCup: Long = 0,
     val totalCup: Long = 0,
@@ -104,8 +110,8 @@ data class WorkerSalesDto(
 data class DashboardDto(
     val cashCup: Long = 0,
     val transferCup: Long = 0,
-    val saleCount: Int = 0,
-    val lowStockCount: Int = 0,
+    val saleCount: Long = 0L,
+    val lowStockCount: Long = 0L,
     val totalInventoryValueCash: Long? = null,
     val totalInventoryValueTransfer: Long? = null,
     val productSales: List<ProductSalesDto> = emptyList(),
@@ -159,5 +165,37 @@ data class InventoryAdjustmentRequest(
     val productId: String,
     val unitDelta: Long,
     val subunitDelta: Long? = null,
-    val reason: String
+    val reason: String,
+    val operationId: String? = null,
+    val deviceId: String? = null,
+    val occurredAt: String? = null,
+    val localSequence: Long? = null,
+    val baseInventoryRevision: Long? = null,
+    val baseCatalogRevision: Long? = null,
+    val basePriceVersion: String? = null,
+    val operationType: String = "STOCK_ADJUSTMENT",
+    val countedUnits: Long? = null,
+    val countedSubunits: Long? = null
+)
+
+
+data class LocalStationRegistrationRequest(
+    val stationId: String,
+    val secret: String,
+    val label: String = "Estación local"
+)
+
+data class LocalStationHeartbeatRequest(
+    val storedOperationCount: Long
+)
+
+data class LocalStationDto(
+    val id: String,
+    val label: String,
+    val status: String,
+    val registeredAt: String? = null,
+    val lastSeenAt: String? = null,
+    val lastReceivedAt: String? = null,
+    val storedOperationCount: Long = 0L,
+    val revokedAt: String? = null
 )

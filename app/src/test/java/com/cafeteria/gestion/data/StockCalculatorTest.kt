@@ -39,4 +39,39 @@ class StockCalculatorTest {
             StockCalculator.afterSale(1, 0, 20, 0, 21)
         }
     }
+    @Test
+    fun `offline adjustment borrows one carton for seven loose packs`() {
+        val remaining = StockCalculator.afterAdjustment(3, 5, 20, 0, -7)
+        assertEquals(2L, remaining.units)
+        assertEquals(18L, remaining.subunits)
+    }
+
+    @Test
+    fun `physical count can record an unchanged balance as an auditable event`() {
+        val unchanged = StockCalculator.afterAdjustment(3, 5, 20, 0, 0, allowNoop = true)
+        assertEquals(3L, unchanged.units)
+        assertEquals(5L, unchanged.subunits)
+    }
+
+    @Test
+    fun `ordinary stock adjustment still rejects an empty change`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            StockCalculator.afterAdjustment(3, 5, 20, 0, 0)
+        }
+    }
+
+    @Test
+    fun `adjustment rejects unknown subunit equivalence`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            StockCalculator.afterAdjustment(3, null, null, 0, -1)
+        }
+    }
+
+    @Test
+    fun `adjustment rejects long overflow`() {
+        assertThrows(ArithmeticException::class.java) {
+            StockCalculator.afterAdjustment(Long.MAX_VALUE, 0, 2, 1, 0)
+        }
+    }
+
 }

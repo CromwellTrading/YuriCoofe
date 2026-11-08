@@ -47,12 +47,69 @@ class SessionStore(private val context: Context) {
         val PENDING_CUSTOMER_USER_ID = stringPreferencesKey("pending_customer_user_id")
         val PENDING_CUSTOMER_IDENTIFIER = stringPreferencesKey("pending_customer_identifier")
         val PENDING_CUSTOMER_DISPLAY_NAME = stringPreferencesKey("pending_customer_display_name")
+        val STATION_AUTH_CODE_ENCRYPTED = stringPreferencesKey("station_auth_code_encrypted")
+        val STATION_AUTH_BUSINESS_ID = stringPreferencesKey("station_auth_business_id")
+        val STATION_AUTH_ID = stringPreferencesKey("station_auth_id")
+        val LOCAL_STATION_ID = stringPreferencesKey("local_station_id")
+        val LOCAL_STATION_SECRET_ENCRYPTED = stringPreferencesKey("local_station_secret_encrypted")
     }
 
     suspend fun save(session: UserSession) {
         val encryptedToken = encrypt(session.accessToken)
-        context.sessionDataStore.edit { prefs -> writeSession(prefs, session, encryptedToken) }
+        context.sessionDataStore.edit { prefs ->
+            writeSession(prefs, session, encryptedToken)
+            if (session.role != Roles.LOCAL_STATION) {
+                prefs.remove(Keys.LOCAL_STATION_ID)
+                prefs.remove(Keys.LOCAL_STATION_SECRET_ENCRYPTED)
+            }
+        }
     }
+
+    /** Stores the owner-generated local station pairing code encrypted on the owner's device. */
+    suspend fun saveStationAuthorization(code: String, businessId: String, stationId: String) {
+        context.sessionDataStore.edit { prefs ->
+            prefs[Keys.STATION_AUTH_CODE_ENCRYPTED] = encrypt(code)
+            prefs[Keys.STATION_AUTH_BUSINESS_ID] = businessId
+            prefs[Keys.STATION_AUTH_ID] = stationId
+        }
+    }
+
+    suspend fun getStationAuthorization(): String? {
+        val prefs = context.sessionDataStore.data.first()
+        val encrypted = prefs[Keys.STATION_AUTH_CODE_ENCRYPTED] ?: return null
+        return runCatching { decrypt(encrypted) }.getOrNull()
+    }
+
+    suspend fun revokeStationAuthorization() = context.sessionDataStore.edit { prefs ->
+        prefs.remove(Keys.STATION_AUTH_CODE_ENCRYPTED)
+        prefs.remove(Keys.STATION_AUTH_BUSINESS_ID)
+        prefs.remove(Keys.STATION_AUTH_ID)
+    }
+
+    /** Activates a restricted local-only identity; it has no backend access token or worker/owner role. */
+    suspend fun activateLocalStation(businessId: String, stationId: String, secret: String): UserSession {
+        val session = UserSession(
+            userId = "local-station-$stationId",
+            displayName = "Estación local",
+            role = Roles.LOCAL_STATION,
+            accessToken = "",
+            businessId = businessId,
+            businessTimeZone = "America/Havana"
+        )
+        context.sessionDataStore.edit { prefs ->
+            writeSession(prefs, session, encrypt(""))
+            prefs[Keys.LOCAL_STATION_ID] = stationId
+            prefs[Keys.LOCAL_STATION_SECRET_ENCRYPTED] = encrypt(secret)
+        }
+        return session
+    }
+
+    suspend fun getLocalStationSecret(): String? {
+        val encrypted = context.sessionDataStore.data.first()[Keys.LOCAL_STATION_SECRET_ENCRYPTED] ?: return null
+        return runCatching { decrypt(encrypted) }.getOrNull()
+    }
+
+    suspend fun getLocalStationId(): String? = context.sessionDataStore.data.first()[Keys.LOCAL_STATION_ID]
 
     /** Save a customer profile immediately, even with no network. The verifier is salted PBKDF2;
      * the temporary password needed for first server registration is encrypted by Android Keystore. */
@@ -169,6 +226,8 @@ class SessionStore(private val context: Context) {
         prefs.remove(Keys.TOKEN_ENCRYPTED)
         prefs.remove(Keys.BUSINESS_ID)
         prefs.remove(Keys.BUSINESS_TIME_ZONE)
+        prefs.remove(Keys.LOCAL_STATION_ID)
+        prefs.remove(Keys.LOCAL_STATION_SECRET_ENCRYPTED)
     }
 
     private fun writeSession(

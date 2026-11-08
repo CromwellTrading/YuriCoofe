@@ -1,6 +1,7 @@
 package com.cafeteria.gestion.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.cafeteria.gestion.CafeteriaApplication
@@ -9,6 +10,7 @@ import com.cafeteria.gestion.data.local.ProductEntity
 import com.cafeteria.gestion.data.remote.CreateAnnouncementRequest
 import com.cafeteria.gestion.data.remote.CreateWorkerRequest
 import com.cafeteria.gestion.data.remote.InventoryAdjustmentRequest
+import com.cafeteria.gestion.data.remote.LocalStationDto
 import com.cafeteria.gestion.sync.SalesSyncScheduler
 import kotlinx.coroutines.launch
 
@@ -22,6 +24,7 @@ const val SCREEN_TEAM = "TEAM"
 const val SCREEN_CUSTOMER_CATALOG = "CUSTOMER_CATALOG"
 const val SCREEN_CUSTOMER_AUTH = "CUSTOMER_AUTH"
 const val SCREEN_SETTINGS = "SETTINGS"
+const val SCREEN_STATION = "LOCAL_STATION"
 
 data class CafeteriaUiState(
     val loading: Boolean = true,
@@ -45,7 +48,10 @@ data class CafeteriaUiState(
     val sortBy: String = "Nombre",
     val ascending: Boolean = true,
     val appearance: String = "LIGHT",
-    val palette: String = "COFFEE"
+    val palette: String = "COFFEE",
+    val stationPairingCode: String? = null,
+    val localStations: List<LocalStationDto> = emptyList(),
+    val stationStats: CafeRepository.LocalStationStats? = null
 )
 
 class CafeteriaViewModel(application: Application) : AndroidViewModel(application) {
@@ -75,12 +81,17 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
                     Roles.OWNER -> SCREEN_HOME
                     Roles.WORKER -> SCREEN_SELL
                     Roles.CUSTOMER -> SCREEN_CUSTOMER_CATALOG
+                    Roles.LOCAL_STATION -> SCREEN_STATION
                     else -> SCREEN_CUSTOMER_AUTH
                 },
                 online = repository.isNetworkAvailable()
             )
-            refreshAll()
-            if (savedSession != null && savedSession.role != Roles.CUSTOMER) app.registerPushTokenIfConfigured()
+            if (savedSession?.role == Roles.LOCAL_STATION) {
+                state.value = state.value.copy(stationStats = runCatching { repository.localStationStats() }.getOrNull())
+            } else {
+                refreshAll()
+            }
+            if (savedSession != null && (savedSession.role == Roles.OWNER || savedSession.role == Roles.WORKER)) app.registerPushTokenIfConfigured()
         }
         viewModelScope.launch {
             app.settingsStore.settings.collect { settings ->
@@ -108,6 +119,7 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
             screen = when (session.role) {
                 Roles.OWNER -> SCREEN_HOME
                 Roles.WORKER -> SCREEN_SELL
+                Roles.LOCAL_STATION -> SCREEN_STATION
                 else -> SCREEN_CUSTOMER_CATALOG
             },
             message = "Sesión iniciada.",
@@ -155,10 +167,27 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun refreshAll() {
         viewModelScope.launch {
+            if (state.value.session?.role == Roles.LOCAL_STATION) {
+                val heartbeat = runCatching { repository.sendStationHeartbeatIfOnline() }
+                state.value = state.value.copy(
+                    online = repository.isNetworkAvailable(),
+                    pendingCount = repository.pendingCount(),
+                    stationStats = runCatching { repository.localStationStats() }.getOrNull(),
+                    error = heartbeat.exceptionOrNull()?.message,
+                    message = if (heartbeat.getOrNull() == true) "Estación autorizada por el servidor." else state.value.message
+                )
+                return@launch
+            }
             val onlineNow = repository.isNetworkAvailable()
             state.value = state.value.copy(online = onlineNow)
             if (onlineNow && repository.isBackendConfigured() && runCatching { repository.hasPendingCustomerRegistration() }.getOrDefault(false)) {
                 runCatching { repository.syncPendingCustomerRegistration() }
+            }
+            if (onlineNow && state.value.session?.role == Roles.OWNER) {
+                runCatching { repository.registerPendingStationIfOnline() }
+                runCatching { repository.loadLocalStations() }.onSuccess { stations ->
+                    state.value = state.value.copy(localStations = stations)
+                }
             }
             val storedSession = runCatching { repository.restoreSession() }.getOrNull()
             val currentSession = state.value.session
@@ -225,10 +254,45 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
         onSaved()
     }
 
+    fun recordPhysicalCount(productId: String, units: Long, subunits: Long?, reason: String, onSaved: () -> Unit = {}) = runBusy("No se pudo guardar el conteo físico.") {
+        repository.recordPhysicalCountOffline(productId, units, subunits, reason.trim())
+        state.value = state.value.copy(
+            products = repository.getCachedProducts(),
+            pendingCount = repository.pendingCount(),
+            message = "Conteo físico guardado con su revisión base. Se sincronizará o quedará para revisión si el servidor cambió."
+        )
+        onSaved()
+    }
+
+    fun renameCategory(oldName: String, newName: String, onSaved: () -> Unit = {}) = runBusy("No se pudo actualizar la categoría.") {
+        val updated = repository.renameCategoryOffline(oldName, newName)
+        state.value = state.value.copy(
+            products = repository.getCachedProducts(),
+            pendingCount = repository.pendingCount(),
+            category = if (state.value.category.equals(oldName, true)) newName else state.value.category,
+            message = "Categoría actualizada en $updated producto(s). Se sincronizará cuando haya conexión."
+        )
+        onSaved()
+    }
+
+    fun deactivateProduct(productId: String, onSaved: () -> Unit = {}) = runBusy("No se pudo desactivar el producto.") {
+        val product = repository.deactivateProductOffline(productId)
+        state.value = state.value.copy(
+            products = repository.getCachedProducts(),
+            pendingCount = repository.pendingCount(),
+            message = "${product.name} quedó desactivado en este dispositivo. La baja se enviará al servidor en orden."
+        )
+        onSaved()
+    }
+
     fun adjustInventory(productId: String, unitsDelta: Long, subunitsDelta: Long?, reason: String, onSaved: () -> Unit = {}) = runBusy("No se pudo ajustar el inventario.") {
         require(reason.isNotBlank()) { "Indica el motivo del ajuste." }
-        repository.submitInventoryAdjustment(InventoryAdjustmentRequest(productId, unitsDelta, subunitsDelta, reason.trim()))
-        state.value = state.value.copy(products = repository.getCachedProducts(), message = "Inventario actualizado.")
+        repository.adjustInventoryOffline(productId, unitsDelta, subunitsDelta, reason.trim())
+        state.value = state.value.copy(
+            products = repository.getCachedProducts(),
+            pendingCount = repository.pendingCount(),
+            message = "Ajuste guardado en este teléfono. Se enviará en orden cuando haya conexión."
+        )
         onSaved()
     }
 
@@ -314,7 +378,76 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
         )
     }
 
+    fun createStationPairingCode() = runBusy("No se pudo crear la estación local.") {
+        val code = repository.generateStationPairingCode()
+        val registered = runCatching { repository.registerPendingStationIfOnline() }.getOrDefault(false)
+        val stations = if (registered) runCatching { repository.loadLocalStations() }.getOrDefault(state.value.localStations) else state.value.localStations
+        state.value = state.value.copy(
+            stationPairingCode = code,
+            localStations = stations,
+            message = if (registered) "Código creado y estación registrada en el servidor. La transferencia entre teléfonos sigue funcionando sin internet." else "Código creado localmente. El registro del servidor queda pendiente hasta recuperar internet."
+        )
+    }
+
+    fun loadStationPairingCode() {
+        viewModelScope.launch {
+            state.value = state.value.copy(stationPairingCode = runCatching { repository.currentStationPairingCode() }.getOrNull())
+        }
+    }
+
+    fun revokeStationPairingCode() = runBusy("No se pudo revocar la estación local.") {
+        val revokedRemotely = repository.revokeStationPairingCode()
+        val stations = if (revokedRemotely) runCatching { repository.loadLocalStations() }.getOrDefault(state.value.localStations) else state.value.localStations
+        state.value = state.value.copy(
+            stationPairingCode = null,
+            localStations = stations,
+            message = if (revokedRemotely) "Estación revocada en el servidor. El dispositivo ya no podrá autenticarse cuando vuelva a conectarse." else "Código local eliminado. No había una estación registrada en el servidor."
+        )
+    }
+
+    fun revokeManagedStation(stationId: String) = runBusy("No se pudo revocar la estación.") {
+        repository.revokeLocalStation(stationId)
+        state.value = state.value.copy(
+            localStations = repository.loadLocalStations(),
+            stationPairingCode = if (state.value.stationPairingCode?.split('|')?.getOrNull(2) == stationId) null else state.value.stationPairingCode,
+            message = "Estación revocada. El servidor rechazará futuras conexiones de ese dispositivo."
+        )
+    }
+
+    fun activateStation(code: String) = runBusy("No se pudo activar la estación local.") {
+        val session = repository.activateLocalStation(code)
+        state.value = state.value.copy(
+            session = session, screen = SCREEN_STATION, online = false,
+            stationStats = repository.localStationStats(),
+            message = "Estación local activada. Este dispositivo solo recibirá, conservará y entregará paquetes."
+        )
+    }
+
+    fun exportTransferPackage(uri: Uri, code: String) = runBusy("No se pudo exportar el paquete.") {
+        val result = repository.exportTransferPackage(uri, code)
+        state.value = state.value.copy(message = result)
+    }
+
+    fun importTransferPackage(uri: Uri, code: String) = runBusy("No se pudo importar el paquete.") {
+        val result = repository.importTransferPackage(uri, code)
+        state.value = state.value.copy(
+            stationStats = if (state.value.session?.role == Roles.LOCAL_STATION) repository.localStationStats() else state.value.stationStats,
+            pendingCount = repository.pendingCount(),
+            message = result.message + " · ${result.salesAdded + result.productOperationsAdded + result.inventoryOperationsAdded} operación(es) nuevas."
+        )
+        if (state.value.session?.role != Roles.LOCAL_STATION) SalesSyncScheduler.enqueueNow(getApplication())
+    }
+
+    fun exportStationCollection(uri: Uri) = runBusy("No se pudo consolidar la estación.") {
+        val result = repository.exportCollectedStationPackage(uri)
+        state.value = state.value.copy(stationStats = repository.localStationStats(), message = result)
+    }
+
     fun syncNow() {
+        if (state.value.session?.role == Roles.LOCAL_STATION) {
+            state.value = state.value.copy(message = "La estación local no se conecta al servidor. Entrega el paquete a Yuri o a un dispositivo autorizado cuando sea posible.")
+            return
+        }
         SalesSyncScheduler.enqueueNow(getApplication())
         viewModelScope.launch {
             state.value = state.value.copy(online = repository.isNetworkAvailable())

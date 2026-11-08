@@ -15,10 +15,14 @@ import java.time.OffsetDateTime
 class SalesSyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     private val gson = Gson()
 
-    private data class Operation(val id: String, val at: Long, val product: Boolean)
+    private data class Operation(val id: String, val at: Long, val kind: String)
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val app = applicationContext as CafeteriaApplication
+        val activeSession = app.sessionStore.getSession()
+        // A LOCAL_STATION is deliberately an offline vault. It must never call the backend,
+        // even if the device currently has internet access.
+        if (activeSession?.role == Roles.LOCAL_STATION) return@withContext Result.success()
         if (!app.apiClient.isConfigured) return@withContext Result.success()
         // Customer registration is a separate public outbox. It must still sync after a logout,
         // and never be allowed to replace a different active staff session.
@@ -32,15 +36,19 @@ class SalesSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
         }
         val session = app.sessionStore.getSession() ?: return@withContext Result.success()
         val salesDao = app.database.saleQueueDao()
+        val businessId = session.businessId ?: return@withContext Result.success()
         val productDao = app.database.productQueueDao()
-        val pendingSales = salesDao.getPending()
+        val adminDao = app.database.adminOperationDao()
+        val pendingSales = salesDao.getPendingForBusiness(businessId, session.userId)
         val pendingProducts = productDao.getPending()
-        if (pendingSales.isEmpty() && pendingProducts.isEmpty()) return@withContext Result.success()
+        val pendingAdminOperations = adminDao.getPending()
+        if (pendingSales.isEmpty() && pendingProducts.isEmpty() && pendingAdminOperations.isEmpty()) return@withContext Result.success()
 
         val operations = buildList {
-            pendingProducts.forEach { add(Operation(it.id, it.createdAtEpochMs, true)) }
-            pendingSales.forEach { add(Operation(it.id, it.createdAtEpochMs, false)) }
-        }.sortedWith(compareBy<Operation> { it.at }.thenByDescending { it.product })
+            pendingProducts.forEach { add(Operation(it.id, it.createdAtEpochMs, "PRODUCT")) }
+            pendingAdminOperations.forEach { add(Operation(it.id, it.createdAtEpochMs, "ADMIN")) }
+            pendingSales.forEach { add(Operation(it.id, it.createdAtEpochMs, "SALE")) }
+        }.sortedWith(compareBy<Operation> { it.at }.thenBy { if (it.kind == "PRODUCT") 0 else if (it.kind == "ADMIN") 1 else 2 })
 
         val service = try {
             app.apiClient.service()
@@ -49,10 +57,21 @@ class SalesSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
         }
 
         for (operation in operations) {
-            if (operation.product) {
+            if (operation.kind == "PRODUCT") {
                 val item = productDao.findById(operation.id) ?: continue
                 // Product catalog changes are owner-only and must sync under the owner who made them.
-                if (session.role != Roles.OWNER || session.userId != item.ownerId) continue
+                if (session.role != Roles.OWNER || session.userId != item.ownerId || session.businessId != item.businessId) continue
+                // A failed earlier catalogue operation blocks later changes to the same product.
+                // This prevents a deactivation or edit from overtaking a change that Yuri still
+                // needs to review.
+                if (productDao.hasEarlierUnresolved(item.productId, item.createdAtEpochMs) > 0) {
+                    productDao.updateStatus(
+                        item.id,
+                        "NEEDS_REVIEW",
+                        "Este cambio depende de una modificación anterior del mismo producto que necesita revisión. No se aplicó fuera de orden."
+                    )
+                    continue
+                }
                 try {
                     app.repository.syncQueuedProduct(item)
                 } catch (e: com.cafeteria.gestion.data.CafeRepository.QueuedOperationException) {
@@ -66,9 +85,38 @@ class SalesSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
                 continue
             }
 
+            if (operation.kind == "ADMIN") {
+                val item = adminDao.findById(operation.id) ?: continue
+                if (session.role != Roles.OWNER || session.userId != item.ownerId || session.businessId != item.businessId) continue
+                // Do not apply later movements on top of an unresolved earlier movement for
+                // the same product. Their causal order must be reviewed together.
+                if (adminDao.hasEarlierUnresolved(item.productId, item.localSequence) > 0) {
+                    adminDao.updateStatus(
+                        item.id,
+                        "NEEDS_REVIEW",
+                        "Este movimiento depende de un ajuste anterior del mismo producto que necesita revisión. No se aplicó automáticamente.",
+                        null
+                    )
+                    continue
+                }
+                try {
+                    app.repository.syncQueuedInventoryAdjustment(item)
+                } catch (e: com.cafeteria.gestion.data.CafeRepository.QueuedOperationException) {
+                    if (e.httpCode == 401 || e.httpCode >= 500) return@withContext Result.retry()
+                    if (e.httpCode == 409 || e.httpCode == 422 || e.httpCode in 400..499) {
+                        adminDao.updateStatus(item.id, "NEEDS_REVIEW", e.message ?: "El servidor necesita revisar este ajuste.", null)
+                    } else return@withContext Result.retry()
+                } catch (_: Exception) {
+                    return@withContext Result.retry()
+                }
+                continue
+            }
+
             val sale = salesDao.findById(operation.id) ?: continue
-            // Never send another user's offline transaction with the current login token.
-            if (sale.workerId != session.userId || (session.role != Roles.OWNER && session.role != Roles.WORKER)) continue
+            if (session.role != Roles.OWNER && session.role != Roles.WORKER) continue
+            // Worker sessions may only submit their own sales. An OWNER can forward
+            // an imported worker sale through the separate, owner-protected endpoint.
+            if (sale.workerId != session.userId && session.role != Roles.OWNER) continue
             val payload = runCatching { gson.fromJson(sale.payloadJson, SalePayload::class.java) }.getOrNull()
             if (payload == null) {
                 salesDao.updateStatus(sale.id, "NEEDS_REVIEW", "No se pudo leer el registro local; la venta no se ha eliminado.", null)
@@ -78,7 +126,11 @@ class SalesSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
             if (payload.items.any { it.productId.startsWith("local-") }) continue
 
             try {
-                val response = service.submitSale(sale.id, payload)
+                val response = if (sale.workerId == session.userId) {
+                    service.submitSale(sale.id, payload)
+                } else {
+                    service.submitForwardedSale(sale.id, payload)
+                }
                 when {
                     response.isSuccessful -> {
                         salesDao.updateStatus(sale.id, "SYNCED", null, OffsetDateTime.now().toString())
@@ -105,8 +157,11 @@ class SalesSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
         }
 
         app.repository.applySyncStockFromServer()
-        val salesStillPending = salesDao.getPending().any { it.workerId == session.userId }
+        val salesStillPending = salesDao.getPendingForBusiness(businessId, session.userId).any {
+            session.role == Roles.OWNER || it.workerId == session.userId
+        }
         val productsStillPending = productDao.getPending().any { it.ownerId == session.userId }
-        if (salesStillPending || productsStillPending) Result.retry() else Result.success()
+        val adminStillPending = adminDao.getPending().any { it.ownerId == session.userId }
+        if (salesStillPending || productsStillPending || adminStillPending) Result.retry() else Result.success()
     }
 }

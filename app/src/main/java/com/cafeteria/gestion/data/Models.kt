@@ -9,6 +9,7 @@ object Roles {
     const val OWNER = "OWNER"
     const val WORKER = "WORKER"
     const val CUSTOMER = "CUSTOMER"
+    const val LOCAL_STATION = "LOCAL_STATION"
 }
 
 object SaleModes {
@@ -106,7 +107,7 @@ data class ProductSalesSummary(
 data class WorkerSalesSummary(
     val workerId: String,
     val workerName: String,
-    val saleCount: Int = 0,
+    val saleCount: Long = 0L,
     val cashCup: Long = 0,
     val transferCup: Long = 0,
     val totalCup: Long = 0,
@@ -127,8 +128,8 @@ data class PendingProductSalesSummary(
 data class DashboardSummary(
     val cashCup: Long = 0,
     val transferCup: Long = 0,
-    val saleCount: Int = 0,
-    val lowStockCount: Int = 0,
+    val saleCount: Long = 0L,
+    val lowStockCount: Long = 0L,
     val totalInventoryValueCash: Long? = null,
     val totalInventoryValueTransfer: Long? = null,
     val productSales: List<ProductSalesSummary> = emptyList(),

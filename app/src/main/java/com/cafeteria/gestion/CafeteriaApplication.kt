@@ -68,8 +68,11 @@ class CafeteriaApplication : Application() {
             FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
                 CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                     runCatching {
-                        val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
-                        repository.registerPushToken(token, deviceId)
+                        val session = sessionStore.getSession()
+                        if (session?.role == com.cafeteria.gestion.data.Roles.OWNER || session?.role == com.cafeteria.gestion.data.Roles.WORKER) {
+                            val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
+                            repository.registerPushToken(token, deviceId)
+                        }
                     }
                 }
             }

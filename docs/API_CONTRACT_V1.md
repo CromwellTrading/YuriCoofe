@@ -1,227 +1,168 @@
-# Contrato de API v1 para Cafetería
+# API Contract v1 — Cafetería
 
-Este documento describe el contrato v1 implementado por el backend Node.js/PostgreSQL y consumido por la aplicación Android. Las versiones de ambos proyectos deben mantenerse compatibles.
+Este documento es el contrato operativo implementado por este backend y consumido por `CafeteriaApp`. Prefijo: `/api/v1/`. JSON UTF-8, excepto creación/edición de productos, que usa multipart con un campo `product` de tipo JSON y un campo `image` opcional. Todas las respuestas tienen envoltura `{ data, message, code? }`.
 
-## Convenciones generales
+## Roles y separación de datos
 
-- Prefijo de API: `/api/v1/`.
-- La dirección base del cliente debe usar HTTPS y terminar en `/`.
-- JSON UTF-8 salvo carga multipart de imágenes.
-- Respuesta de éxito/error con sobre común:
-  `{"data": <dato o null>, "message": "mensaje legible", "code": "CODIGO_OPCIONAL"}`.
-- Los importes son enteros en CUP, nunca números decimales de punto flotante.
-- Roles: `OWNER`, `WORKER`, `CUSTOMER`. La autorización se verifica en el servidor en cada endpoint, no solo en la interfaz Android.
-- Un negocio representa un espacio de datos aislado. Ninguna consulta debe leer/modificar productos, cuentas, ventas, tokens o anuncios de otro negocio.
-- Los endpoints administrativos requieren una sesión autenticada de `OWNER`; las ventas requieren `WORKER` o `OWNER`; el catálogo público y anuncios publicados pueden consultarse sin sesión, según los permisos especificados.
+- `OWNER`: administración total de su cafetería, equipo, precios, avisos, existencias, estadísticas e historial completo.
+- `WORKER`: consultar el inventario detallado de su negocio, registrar ventas y consultar solo sus propias ventas. No puede administrar productos ni modificar stock manualmente.
+- `CUSTOMER`: consultar únicamente el catálogo público del negocio. Puede registrar un token push; no puede consultar existencias exactas, ventas ni estadísticas.
+- `LOCAL_STATION`: modo local exclusivo de Android; no es un rol de usuario de PostgreSQL ni obtiene token Bearer. Solo conserva/entrega paquetes cifrados localmente; en el servidor únicamente autentica heartbeat con su clave específica.
+
+Toda tabla de negocio lleva `business_id`; la API deriva el negocio de la sesión autenticada. Las peticiones anónimas usan `PUBLIC_BUSINESS_SLUG`, un único negocio activo o el selector `X-Business-Slug`. No se acepta un `businessId` enviado por el cliente como prueba de autorización.
 
 ## Autenticación
 
-### `POST /api/v1/auth/login`
+### POST `/api/v1/auth/login`
 
-Request: `{"identifier":"nombre-o-usuario", "password":"..."}`. El endpoint es el acceso único para los tres roles: `OWNER` y `WORKER` se resuelven por el identificador creado por la dueña; `CUSTOMER` se resuelve por el nombre visible más la contraseña. El rol nunca lo elige la app y siempre lo devuelve el backend.
+Request: `{"identifier":"nombre-o-usuario","password":"..."}`. Es el acceso único para todos los perfiles. `OWNER` y `WORKER` se validan por el identificador creado por la dueña; si no coincide, busca `CUSTOMER` por nombre visible y contraseña dentro del negocio público configurado. Devuelve el rol real guardado en la base de datos; el cliente no puede elegirlo. Devuelve `accessToken`, `userId`, `displayName`, `role`, `businessId` y `businessTimeZone`. El token es opaco, aleatorio y caduca en `SESSION_DAYS` (por defecto 30 días). Solo su hash se almacena en PostgreSQL.
 
-Data de respuesta:
+### GET `/api/v1/auth/me`, POST `/api/v1/auth/logout`
 
-```json
-{
-  "accessToken": "token-de-sesion",
-  "userId": "id-estable-de-usuario",
-  "displayName": "Nombre visible",
-  "role": "OWNER|WORKER|CUSTOMER",
-  "businessId": "id-del-negocio",
-  "businessTimeZone": "America/Havana"
-}
-```
+`me` devuelve los datos de la sesión. `logout` revoca la sesión actual. Desactivar una trabajadora bloquea nuevos logins y revoca sus sesiones vigentes.
 
-`businessTimeZone` debe ser un identificador IANA. `POST /api/v1/auth/logout` invalida la sesión cuando corresponda. `GET /api/v1/auth/me` devuelve los datos de la sesión vigente.
+### POST `/api/v1/auth/register-customer` (público)
 
-### `POST /api/v1/auth/register-customer` (público)
+Crea una cuenta `CUSTOMER` en el negocio público resuelto. Request: `displayName`, `identifier` (identificador interno `customer-` + UUID generado por la app), `password` (mínimo 10 caracteres). El identificador interno no se muestra al cliente; el nombre visible puede repetirse. El registro tiene un límite de frecuencia dedicado.
 
-Request: `{"displayName":"María Rodríguez","identifier":"customer-<UUID>","password":"..."}`. Crea exclusivamente una cuenta `CUSTOMER`. Android genera el identificador interno único; nunca se muestra al usuario. El nombre visible puede repetirse. La contraseña debe tener al menos 10 caracteres. El servidor aplica un límite de registros por conexión/IP.
+### POST `/api/v1/auth/customer-login` (público)
 
-### `POST /api/v1/auth/customer-login` (público)
+Request legado para versiones anteriores: `displayName`, `password`. Las versiones nuevas usan `/auth/login` para todos los perfiles. La app Android exige iniciar sesión antes de abrir el catálogo, aunque el endpoint de consulta pública del catálogo continúe aceptando solicitudes sin token.
 
-Request legado para compatibilidad con versiones anteriores: `{"displayName":"María Rodríguez","password":"..."}`. Las versiones nuevas usan `/auth/login` para todas las cuentas.
+## Productos
 
-La app también admite crear una cuenta sin conexión: guarda el verificador local de contraseña y una copia temporal cifrada con Android Keystore para el primer envío. WorkManager reintenta el registro al recuperar conectividad y elimina la contraseña cifrada solo después de la confirmación del servidor. La cuenta provisional solo se puede validar en ese teléfono hasta que el servidor la registre. Se permite una única alta offline pendiente por instalación para evitar sobrescribir una cuenta todavía no sincronizada.
+### GET `/api/v1/products`
 
-## Productos e inventario
+Filtros: `visibility=public|all`, `category`, `sort=name|updatedAt|unitPriceCup|stockUnits`, `direction=asc|desc`. Sin sesión, la visibilidad siempre debe ser `public`; `all` requiere dueña o trabajadora. El catálogo público entrega `available` y no revela cantidades exactas. Se rechaza ordenar por stock en la vista pública para no inferir existencias.
 
-### `GET /api/v1/products`
+Cada elemento entrega `id`, `name`, `description`, `categoryName`, `imageUrl`, `unitName`, `subunitName`, `saleMode`, `subunitsPerUnit`, `unitPriceCup`, `unitPriceTransfer`, `subunitPriceCup`, `subunitPriceTransfer`, `stockUnits`, `stockSubunits`, `minimumStock`, `publicVisible`, `updatedAt`, `priceVersion` y `inventoryRevision` (solo vistas autenticadas; en la vista pública es `null`). Para clientes `stockUnits` solo indica disponibilidad (`1`/`0`), `stockSubunits=null` y `minimumStock=0`.
 
-Query params:
+`UNIT` requiere `unitPriceCup`; `SUBUNIT` requiere `subunitPriceCup`; `BOTH` requiere ambos. Los precios de transferencia son opcionales por cada formato. `priceVersion` cambia cuando varía un precio o formato que afecte a la venta, pero no con cambios de stock. Una equivalencia conocida mantiene el stock como unidades completas y subunidades sueltas normalizadas. Sin equivalencia conocida, `stockSubunits` es `null`. Para productos `SUBUNIT` sin equivalencia y `stockUnits=0`, la disponibilidad pública se considera activa como venta por porciones no inventariadas (por ejemplo, café o chocolate por vaso): se registra cantidad e importe sin descontar recipientes inexistentes. Si se registran recipientes (`stockUnits>0`) y se desconoce el rendimiento, la venta por porciones conserva el número de recipientes y la dueña debe ajustar manualmente el stock cuando se vacíe; el sistema no inventa cuántas porciones quedan.
 
-- `visibility=public` para catálogo de clientes; solo productos públicos activos.
-- `visibility=all` para dueña/trabajadoras autorizadas.
-- Opcionales: `category`, `sort=name|updatedAt|unitPriceCup|stockUnits`, `direction=asc|desc`.
+### POST `/api/v1/products`, PUT `/api/v1/products/:id`, DELETE `/api/v1/products/:id`
 
-La app actualmente ordena también localmente. El servidor debe filtrar por negocio y permisos, además de aplicar un orden estable.
+Crear/editar usan multipart: `product` como JSON y `image` como fichero opcional JPG/PNG/WebP de máximo 5 MiB (ajustable con `MAX_IMAGE_BYTES`). Crear permite stock inicial. Editar conserva el stock actual; para cambiar existencias se usa ajuste de inventario. Si se modifica la equivalencia, el inventario debe estar en cero para no reinterpretar cantidades anteriores. `DELETE` desactiva lógicamente y conserva las ventas.
 
-Cada producto contiene estos campos (los opcionales pueden ser `null`):
+Las imágenes se guardan en Supabase Storage si están configurados `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`; en otro caso se guardan en `UPLOAD_DIR`.
 
-```json
-{
-  "id":"id-del-producto",
-  "name":"Nombre",
-  "description":"Descripción",
-  "categoryName":"Panadería",
-  "imageUrl":"https://...",
-  "unitName":"caja",
-  "subunitName":"cigarro",
-  "saleMode":"UNIT|SUBUNIT|BOTH",
-  "subunitsPerUnit":20,
-  "unitPriceCup":150,
-  "unitPriceTransfer":145,
-  "subunitPriceCup":10,
-  "subunitPriceTransfer":10,
-  "stockUnits":10,
-  "stockSubunits":0,
-  "minimumStock":2,
-  "publicVisible":true,
-  "updatedAt":"2026-10-27T09:30:00-04:00",
-  "priceVersion":"version-opaca-de-precios"
-}
-```
+## Ajustes de inventario
 
-`unitPriceCup` es obligatorio cuando se vende por unidad; puede ser `null` para `SUBUNIT`. Un producto `SUBUNIT` con `subunitsPerUnit=null` y `stockUnits=0` representa preparados como café/chocolate por vaso: las ventas por porción son válidas y se contabilizan, pero no se deduce un stock ficticio de recipientes. Si `stockUnits>0`, esos recipientes se conservan sin deducir un rendimiento desconocido y deben ajustarse manualmente al agotarse. Para `BOTH` sin equivalencia se mantiene la regla de que debe quedar al menos un recipiente al registrar porciones. `unitPriceTransfer` y `subunitPriceTransfer` son opcionales. Un precio de transferencia ausente o nulo significa que ese formato no puede cobrarse por transferencia. `stockSubunits` debe ser un número cuando se conoce la equivalencia; si no se conoce, debe ser `null`, no una cantidad inventada. Para `visibility=public`, el servicio solo entrega disponibilidad (`stockUnits` 1/0), sin cantidades privadas. La app marca esta copia local como aproximada y no la usa para vender offline ni para editar inventario. Una consulta pública no debe sobrescribir una copia privada exacta ya descargada en ese dispositivo.
+### POST `/api/v1/inventory/adjustments`
 
-`priceVersion` es un token opaco que cambia cada vez que se modifica cualquier precio, moneda/método habilitado o formato que afecte al cálculo de precio. Los cambios de existencias por sí solos no deben cambiar `priceVersion`. El cliente lo envía en cada venta para detectar ventas con precios antiguos. `updatedAt` cambia ante modificaciones de producto de cualquier tipo.
+Solo dueña. Request: `{"productId":"UUID","unitDelta":5,"subunitDelta":0,"reason":"Reposición","operationId":"UUID","deviceId":"android-id","occurredAt":"2026-11-06T10:00:00-05:00","localSequence":1,"baseInventoryRevision":0,"basePriceVersion":"version-del-producto"}`. Los campos de idempotencia/revisión son opcionales para clientes antiguos. La operación usa bloqueo de fila y transacción, no permite saldo negativo, actualiza `inventory_revision` y crea movimiento, registro de operación y auditoría. Reutilizar un `operationId` con el mismo contenido no vuelve a aplicar el ajuste; con contenido diferente devuelve conflicto. Si cambió la revisión de inventario o el `priceVersion`/formato desde la base usada por el teléfono, conserva la operación como `NEEDS_REVIEW` y no la aplica automáticamente. Para productos de rendimiento desconocido, no se permite declarar un delta de subunidades distinto de cero.
 
-### `POST /api/v1/products` y `PUT /api/v1/products/{id}`
+## Ventas offline e idempotencia
 
-Multipart form-data:
+### POST `/api/v1/sales`
 
-- `product`: JSON con los campos editables.
-- `image`: opcional, binario de la imagen.
+Requiere `Authorization: Bearer ...` y `Idempotency-Key` idéntico a `clientSaleId`. El cuerpo sigue el ejemplo del contrato Android. `workerId` debe coincidir con el usuario autenticado. La API no confía en `workerName`, los precios, el total, ni las existencias enviados por el cliente; vuelve a consultar el catálogo y el usuario en el servidor.
 
-La creación puede incluir `stockUnits` y `stockSubunits`. La edición desde la app no pretende modificar las existencias directamente; el stock existente se modifica con ajuste de inventario y auditoría. Si no se envía nueva imagen al editar, el servidor debe conservar la imagen anterior. `DELETE /api/v1/products/{id}` debe desactivar lógicamente el producto, no borrar su historial de ventas.
+### POST `/api/v1/sales/forwarded`
 
-### `POST /api/v1/inventory/adjustments`
+Solo `OWNER`. Permite a la administradora reenviar una venta offline que una trabajadora entregó mediante el sistema local de archivos. El cuerpo y la clave de idempotencia son iguales a `/api/v1/sales`, y `workerId` identifica a la trabajadora original. El servidor comprueba que esa cuenta siga activa, pertenezca a la misma cafetería y tenga rol `OWNER` o `WORKER`; vuelve a validar catálogo, precio, formato, total y existencias. La ruta no concede credenciales de administración a la trabajadora ni a la estación local.
 
-Request:
+La operación, en una sola transacción:
 
-```json
-{"productId":"...", "unitDelta":5, "subunitDelta":0, "reason":"Reposición de mercancía"}
-```
+1. Bloquea el identificador de idempotencia y comprueba si ya fue aceptado.
+2. Si ya existe con el mismo hash del cuerpo, devuelve la venta original; no modifica stock ni caja otra vez. Si se reutiliza con datos diferentes, devuelve `409 IDEMPOTENCY_KEY_REUSED`.
+3. Bloquea las filas de productos en orden estable y valida existencia, formato, versión y método de pago.
+4. Recalcula importes con los precios del servidor y compara cada subtotal y el total.
+5. Inserta venta y detalles; actualiza stock, crea movimientos y escribe auditoría antes de confirmar la transacción.
 
-Solo `OWNER`. Debe actualizar el stock en una transacción y registrar actor, hora, delta anterior/nuevo y motivo en el historial de movimientos. Rechazar cualquier ajuste que produzca existencias negativas. Para productos con equivalencia desconocida, `subunitDelta` debe ser `null` y los ajustes se realizan sobre unidades/recipientes.
+`PRICE_CHANGED`, `SALE_FORMAT_CHANGED`, `INSUFFICIENT_STOCK`, `PRICE_SNAPSHOT_MISMATCH` y otros conflictos no producen mutaciones parciales. La app debe conservar la venta local y marcarla para revisión ante `409`/`422`; los fallos temporales pueden reintentarse con el mismo ID y el mismo cuerpo.
 
-## Ventas, idempotencia y cola offline
+` sold_at_original` conserva el timestamp de evento con su offset; `sold_at` permite buscar por instante temporal y `received_at` registra recepción del servidor. La zona horaria del dispositivo se conserva como contexto. La hora de la venta reportada por un dispositivo offline no se puede verificar criptográficamente contra su reloj.
 
-### `POST /api/v1/sales`
+Para una equivalencia conocida, el stock se convierte a saldo base y se normaliza; vender 21 subunidades consume el equivalente de 1 unidad y 1 subunidad. El importe, sin embargo, se calcula según la forma de venta realmente registrada (21 subunidades al precio de subunidad), no sustituyendo silenciosamente ese precio por el precio de una unidad completa. Sin rendimiento conocido, las porciones generan importe pero no convierten inventario de forma ficticia.
 
-Cabecera obligatoria: `Idempotency-Key: <clientSaleId>`.
+### GET `/api/v1/sales`
 
-Body completo generado una vez al confirmar la venta y almacenado sin modificaciones en SQLite:
+Filtros opcionales `from`, `to`, `workerId`, `limit` (máximo 500). Dueña ve su equipo; trabajadora solo sus propias ventas. Cada venta incluye `id`, `clientSaleId`, `soldAt`, `workerId`, `workerName`, `summary`, `paymentMethod`, `totalCUP` y `status`.
 
-```json
-{
-  "clientSaleId":"UUID",
-  "soldAt":"2026-10-27T09:24:18-04:00",
-  "deviceTimeZoneId":"America/Havana",
-  "deviceOffsetMinutes":-240,
-  "workerId":"id-de-la-trabajadora",
-  "workerName":"Nombre guardado al vender",
-  "paymentMethod":"CASH_CUP|TRANSFER_CUP",
-  "currency":"CUP",
-  "items":[
-    {
-      "productId":"id-producto",
-      "productName":"Nombre al vender",
-      "unitName":"caja",
-      "subunitName":"cigarro",
-      "unitQuantity":5,
-      "subunitQuantity":30,
-      "subunitsPerUnitSnapshot":20,
-      "priceVersionSnapshot":"version-de-precios",
-      "unitPriceAppliedCUP":150,
-      "subunitPriceAppliedCUP":10,
-      "totalCUP":1050
-    }
-  ],
-  "totalCUP":1050,
-  "appVersion":"1.0.0"
-}
-```
+## Panel y estadísticas
 
-Valores del ejemplo solo ilustran la estructura del contrato; no son productos/precios precargados en la app.
+### GET `/api/v1/dashboard?from=...&to=...`
 
-El backend debe cumplir los puntos siguientes:
+Solo dueña. Sin intervalo, usa el día actual de `businesses.time_zone`. Entrega:
 
-1. Autenticar a la persona y verificar que `workerId` corresponde al principal autenticado. No confiar en `workerName`, `totalCUP` ni precios enviados por el cliente como autoridad.
-2. Antes de modificar nada, buscar si ya existe una venta con `clientSaleId` para ese negocio. Si existe, devolver la respuesta original y no descontar stock ni registrar caja una segunda vez.
-3. Procesar inventario, detalle de venta, movimiento de stock, importes y resultado idempotente en una sola transacción de base de datos.
-4. Verificar precio/versión en el servidor, recalcular el importe a partir de cantidades y precios vigentes, y validar que el método de pago esté habilitado en cada formato vendido. La app registra el precio aplicado al confirmar; si la versión cambió y el servidor no puede aceptar la venta con seguridad, devolver `409` con un mensaje que permita revisión, sin mutar parcialmente el inventario.
-5. Si hay stock insuficiente o una versión incompatible que requiere intervención, responder `409` (conflicto) o `422` (validación). El registro local se conserva y se marca `NEEDS_REVIEW`.
-6. Responder `401` si la sesión no es válida. Fallos transitorios o `5xx` deben poder reintentarse.
-7. Conservar `soldAt` como hora del evento recibida y guardar aparte `receivedAt`/hora del servidor. No sustituir el evento original por la hora de sincronización. Usar `deviceTimeZoneId` y `deviceOffsetMinutes` solo como metadatos de contexto; para los informes del negocio usar la zona horaria configurada del negocio.
-8. La respuesta exitosa devuelve `saleId`, `clientSaleId`, `status` y `soldAt` dentro de `data`.
-
-La app escribe primero la venta y la deducción local en la misma transacción Room. Los cambios de catálogo de la dueña se guardan en una segunda cola Room con su propio ID, fecha, JSON e imagen copiada al almacenamiento interno. WorkManager procesa cronológicamente cambios de producto y ventas: crea primero un producto local y actualiza los IDs/precios de las ventas posteriores antes de enviarlas. Solo intenta enviar cuando hay conectividad y reutiliza el UUID, el header y el JSON original de cada venta. Nunca se elimina una venta local al recibir error o al perder internet. La sincronización está limitada a la cuenta trabajadora original para evitar reasignar ventas a otra persona en un dispositivo compartido.
-
-### `GET /api/v1/sales`
-
-Params opcionales: `from`, `to` (ISO-8601 con offset), `workerId`, `limit`. La dueña puede consultar a todo su equipo; una trabajadora solo puede recibir sus operaciones; clientes no tienen acceso. Las respuestas deben contener `id`, `clientSaleId`, `soldAt`, `workerId`, `workerName`, `summary`, `paymentMethod`, `totalCUP`, `status`.
-
-## Estadísticas
-
-### `GET /api/v1/dashboard?from=...&to=...`
-
-Solo `OWNER`. La respuesta `data` contiene:
-
-- `cashCup`: total de ventas registradas como efectivo CUP en el periodo.
-- `transferCup`: total de ventas registradas como transferencia en el periodo.
+- `cashCup`: suma aceptada con efectivo.
+- `transferCup`: suma aceptada marcada como transferencia (no es confirmación bancaria).
 - `saleCount`: operaciones aceptadas.
-- `lowStockCount`: productos activos por debajo del umbral mínimo.
-- `totalInventoryValueCash`: valoración potencial al vender el stock disponible con precios de efectivo; `null` si no puede calcularse íntegramente.
-- `totalInventoryValueTransfer`: valoración potencial por transferencia; `null` cuando no todos los productos/formas tienen precio transfer habilitado o la valoración no es exacta.
+- `lowStockCount`: productos activos bajo el mínimo configurado.
+- `totalInventoryValueCash` y `totalInventoryValueTransfer`: valoración por precios de venta; `null` si falta un precio, una equivalencia o un rendimiento que impida una cifra exacta.
 
-Los totales de transferencia son registros declarados por la operación; la API no debe presentarlos como confirmación bancaria automática si no hay integración de verificación.
+## Avisos
 
-## Avisos y ofertas
+### GET `/api/v1/announcements?includeScheduled=false`
 
-### `GET /api/v1/announcements?includeScheduled=false`
+Público y clientes: solo avisos publicados y no vencidos. `includeScheduled=true` es exclusivo de la dueña e incluye estados programados/publicados/cancelados/vencidos.
 
-Público/clientes: solo avisos publicados y no vencidos. Dueña: puede pedir `includeScheduled=true` para revisar lo programado.
+### POST `/api/v1/announcements`
 
-### `POST /api/v1/announcements`
+Request: `title`, `message`, `publishAt` ISO-8601 con offset, `expiresAt` opcional y `sendPushNotification` booleano. Crea un aviso `SCHEDULED`; un proceso del servidor lo publica a la hora indicada, aunque la app de la dueña esté cerrada. Debe ejecutarse en una instancia que permanezca encendida para cumplir la programación a su hora. Varias instancias coordinan el trabajo mediante bloqueos de PostgreSQL.
 
-Request: `title`, `message`, `publishAt`, `expiresAt` opcional y `sendPushNotification`. Las fechas deben ser ISO-8601 con offset. El servidor debe conservar la hora objetivo e implementar un planificador durable que publique/envíe el aviso a esa hora aunque el teléfono de la dueña esté apagado. El proceso debe ser idempotente para evitar notificaciones duplicadas. Las notificaciones push se dirigen a clientes suscritos al negocio y que no hayan revocado el permiso/token.
+### PATCH `/api/v1/announcements/:id/cancel`
 
-`PATCH /api/v1/announcements/{id}/cancel` cancela una publicación o aviso programado. La app espera `id`, `title`, `message`, `publishAt`, `expiresAt`, `status`, `imageUrl`.
+Solo dueña; cancela avisos programados o publicados y detiene los envíos que todavía estén pendientes en la cola.
 
 ## Equipo
 
-- `GET /api/v1/team`: solo dueña; devuelve miembros del negocio.
-- `POST /api/v1/team`: solo dueña; acepta `displayName`, `identifier`, `temporaryPassword`, `role=WORKER`. Nunca permitir crear otro `OWNER` desde este endpoint.
-- `PATCH /api/v1/team/{id}/status`: solo dueña; body `{"active":true|false}`. Desactivar debe bloquear nuevas sesiones y revocar sesiones vigentes de esa cuenta. No se borran sus ventas históricas.
+- `GET /api/v1/team`: lista trabajadoras de la cafetería.
+- `POST /api/v1/team`: crea `WORKER` con `displayName`, `identifier`, `temporaryPassword` (mínimo 8 caracteres para coincidir con la validación de la app). No permite elegir `OWNER` ni `CUSTOMER`.
+- `PATCH /api/v1/team/:id/status`: body `{"active":true|false}`. Desactivar revoca sesiones y conserva el historial.
 
-Las contraseñas deben almacenarse con un algoritmo de hash lento de contraseñas en el backend (no cifrado reversible). No devolver la contraseña ni datos sensibles en la respuesta de equipo.
+Las contraseñas se hash con bcrypt; nunca aparecen en las respuestas.
 
-## Notificaciones push
+## Push
 
-### `POST /api/v1/devices/push-token`
+- `POST /api/v1/devices/push-token`: `{"token":"...","deviceId":"...","platform":"ANDROID"}`. Admite visitantes sin sesión para clientes y asocia cuentas autenticadas al negocio de la sesión. Los tokens de cuentas de dueña/trabajadora no reciben avisos públicos.
+- `POST /api/v1/devices/push-token/revoke` (extra): `{"deviceId":"..."}` desactiva el registro de notificaciones del dispositivo.
 
-Body: `{"token":"token-FCM", "deviceId":"id-de-dispositivo", "platform":"ANDROID"}`. Asignar el token al negocio y, cuando aplique, a la cuenta autenticada; para cliente visitante se permite registro público con controles antiabuso. Debe deduplicar tokens, permitir su actualización/revocación y enviar los avisos desde el servidor. Nunca aceptar tokens para otros negocios por un `businessId` enviado libremente por el cliente.
+El planificador crea una fila de outbox por aviso y dispositivo, reintenta errores temporales y desactiva tokens inválidos. Si falta Firebase, la cola se mantiene pendiente en vez de indicar falsamente que se entregó. FCM es de tipo al menos una vez; una caída justo después de la aceptación puede provocar duplicados ocasionales.
 
-La app obtiene el token de Firebase solo si las propiedades de Firebase están configuradas en la compilación. El backend necesita credenciales de servidor de Firebase almacenadas en su configuración protegida; no deben estar en APK ni en este repositorio.
+## Directorio multi-negocio (extra)
 
-## Requisitos mínimos de seguridad y consistencia
+### GET `/api/v1/businesses`
 
-- Permisos por rol y aislamiento por negocio en todas las consultas y mutaciones.
-- Validación de cantidades, importes, estados y tamaños de imagen en el servidor.
-- Transacciones para venta + stock + movimientos + idempotencia.
-- Claves únicas de idempotencia por negocio y `clientSaleId`.
-- Auditoría para ajustes de stock, cancelaciones, correcciones y cambios de precios.
-- Rate limiting y mensajes de error públicos que no revelen infraestructura, proveedores, trazas, SQL ni secretos.
-- Imágenes servidas mediante URL segura; limitar tamaño/tipo y no confiar en el nombre local del fichero.
-- Copias de seguridad y pruebas de recuperación antes de producción.
+Devuelve lista pública de negocios activos para una app multi-cafetería. En una instalación dedicada configura `PUBLIC_BUSINESS_SLUG` para resolver las peticiones públicas sin selector.
 
-## Estadísticas de venta (`GET /api/v1/dashboard`)
+## Códigos comunes
 
-Solo disponible para `OWNER`. Los parámetros `from` y `to` son marcas ISO-8601 con offset; `from` se incluye y `to` se excluye. Desde backend 1.3.0, el objeto `data` incorpora:
+- `401 UNAUTHORIZED`: sesión ausente, inválida o vencida.
+- `403 FORBIDDEN`: rol o permiso insuficiente.
+- `404 NOT_FOUND`: recurso no encontrado dentro del negocio autenticado.
+- `409`: conflicto de inventario, versión, clave idempotente o negocio.
+- `422`: solicitud o cantidades no válidas.
+- `429 RATE_LIMITED` / `LOGIN_RATE_LIMITED` / `CUSTOMER_REGISTER_RATE_LIMITED`: límite temporal de solicitudes.
+- `5xx`: error temporal; la venta local debe conservarse y puede reintentarse con idéntico cuerpo.
 
-- `productSales[]`: cantidades agregadas por producto (`productName`, `unitName`, `subunitName`, `unitQuantity`, `subunitQuantity`) y los importes `totalCup`, `cashCup`, `transferCup`.
-- `workerSales[]`: `workerId`, `workerName`, `saleCount`, importes `cashCup`, `transferCup`, `totalCup` y cantidades agregadas `unitQuantity`, `subunitQuantity`.
 
-Las cantidades provienen de `sale_items` de ventas `ACCEPTED`, no del inventario actual; por tanto también cuentan vasos/tazas/porciones de productos configurados sin seguimiento de stock. Los importes de cada trabajadora se agregan desde `sales`, de forma que una venta con varios artículos no multiplica el total de dinero.
+## Estadísticas extendidas (`GET /api/v1/dashboard`)
+
+Disponible solo para `OWNER`. Acepta `from` y `to` ISO-8601 con offset; `from` se incluye y `to` se excluye. Además de `cashCup`, `transferCup`, `saleCount`, inventario, devuelve:
+
+- `productSales[]`: `productId`, `productName`, `unitName`, `subunitName`, `unitQuantity`, `subunitQuantity`, `totalCup`, `cashCup`, `transferCup`. Las cantidades se suman desde las líneas `sale_items` de ventas aceptadas y no dependen del stock configurado.
+- `workerSales[]`: `workerId`, `workerName`, `saleCount`, `cashCup`, `transferCup`, `totalCup`, `unitQuantity`, `subunitQuantity`. Los importes se agregan desde `sales` y las cantidades desde `sale_items`, sin multiplicar importes por el número de artículos de cada venta.
+
+Las ventas `REVERSED` no se incluyen. El servidor aplica el intervalo a `sales.sold_at`, que conserva la hora original de la venta.
+
+
+## Operaciones offline e idempotencia (migraciones 002–004)
+
+- `POST /api/v1/products` admite `clientOperationId` (UUID) dentro de `product`. Las altas offline reutilizan el mismo UUID y el mismo contenido en cada reintento. Reutilizar el UUID con contenido diferente devuelve `409 PRODUCT_OPERATION_ID_REUSED`.
+- `PUT /api/v1/products/:id` admite `clientOperationId` y `baseCatalogRevision` en `product`. La actualización es idempotente ante una respuesta perdida; una base de catálogo desactualizada devuelve `409 CATALOG_REVISION_CONFLICT`.
+- `DELETE /api/v1/products/:id` es idempotente: desactivar de nuevo un producto ya inactivo de la misma cafetería devuelve éxito sin duplicar el evento de auditoría.
+- Cada alta, edición o desactivación administrativa incrementa `businesses.catalog_revision`, asigna esa revisión a `products.catalog_revision` y añade un evento a `catalog_events`.
+- Los movimientos de inventario comparan `baseInventoryRevision`, `baseCatalogRevision` y `basePriceVersion`; los cambios de base incompatibles quedan en `NEEDS_REVIEW` y no reemplazan el saldo del servidor.
+- `POST /api/v1/stations`, `GET /api/v1/stations`, `POST /api/v1/stations/:id/revoke` y `POST /api/v1/stations/:id/heartbeat` gestionan estaciones con secreto propio. El secreto solo autentica el heartbeat; no es un token de usuario ni autoriza operaciones de catálogo, ventas o inventario.
+
+
+## Estaciones locales y recepción de operaciones reenviadas
+
+- `POST /api/v1/stations` (solo `OWNER`): registra `{ "stationId": "UUID", "secret": "secreto-aleatorio", "label": "Estación local" }`. El backend almacena solo SHA-256 del secreto.
+- `GET /api/v1/stations` (solo `OWNER`): lista estaciones de la cafetería autenticada.
+- `POST /api/v1/stations/:id/revoke` (solo `OWNER`): revoca la estación. Desde ese momento no acepta heartbeat.
+- `POST /api/v1/stations/:id/heartbeat` (sin Bearer; cabecera `X-Station-Secret`): reporta último contacto y cantidad de operaciones que conserva. Esta ruta no da acceso a catálogo, ventas ni inventario.
+- `POST /api/v1/sales/forwarded` (solo `OWNER`): reenvía una venta original de una trabajadora después de importar un paquete local. Requiere `Idempotency-Key` igual a `clientSaleId` y conserva los controles de trabajador activo, precio, formato, cantidades e inventario.
+
+La estación no sincroniza ventas o cambios por sí sola en esta versión; el propietario importa el archivo consolidado y su app procesa la cola. La comunicación worker↔station es por archivo cifrado transferido fuera del servidor. Wi-Fi Direct, hotspot, Bluetooth gestionado dentro de la app y QR multiparte no forman parte de esta versión.

@@ -26,7 +26,10 @@ data class ProductEntity(
     val publicVisible: Boolean = true,
     val updatedAt: String = "",
     val priceVersion: String = "",
-    @ColumnInfo(defaultValue = "0") val stockIsApproximate: Boolean = false
+    @ColumnInfo(defaultValue = "0") val stockIsApproximate: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val inventoryRevision: Long = 0L,
+    @ColumnInfo(defaultValue = "1") val active: Boolean = true,
+    @ColumnInfo(defaultValue = "0") val catalogRevision: Long = 0L
 )
 
 @Entity(tableName = "sale_queue")
@@ -42,7 +45,8 @@ data class SaleQueueEntity(
     val payloadJson: String,
     val status: String = "PENDING",
     val lastError: String? = null,
-    val syncedAt: String? = null
+    val syncedAt: String? = null,
+    @ColumnInfo(defaultValue = "''") val businessId: String = ""
 )
 
 /** Durable owner-only outbox for product creates/updates made while disconnected. */
@@ -56,5 +60,45 @@ data class ProductQueueEntity(
     val imageUri: String? = null,
     val createdAtEpochMs: Long,
     val status: String = "PENDING",
+    val lastError: String? = null,
+    @ColumnInfo(defaultValue = "''") val businessId: String = ""
+)
+
+/** Durable event log for owner-side stock operations created without network access. */
+@Entity(
+    tableName = "admin_operation_queue",
+    indices = [Index(value = ["productId"]), Index(value = ["deviceId", "localSequence"], unique = true)]
+)
+data class AdminOperationEntity(
+    @PrimaryKey val id: String,
+    val productId: String,
+    val ownerId: String,
+    val businessId: String,
+    val deviceId: String,
+    val operation: String,
+    val payloadJson: String,
+    val catalogRevision: Long?,
+    val inventoryRevision: Long?,
+    val occurredAt: String,
+    val createdAtEpochMs: Long,
+    val localSequence: Long,
+    val status: String = "PENDING",
+    val lastError: String? = null,
+    val serverInventoryRevision: Long? = null
+)
+
+/** Transfer receipts are metadata-only; payloads remain encrypted at rest with Android Keystore. */
+@Entity(tableName = "transfer_bundles", indices = [Index(value = ["sourceDeviceId"]), Index(value = ["createdAtEpochMs"])])
+data class TransferBundleEntity(
+    @PrimaryKey val bundleId: String,
+    val sourceDeviceId: String,
+    val destinationDeviceId: String?,
+    val direction: String,
+    val contentHash: String,
+    val operationIdsJson: String,
+    val status: String,
+    val createdAt: String,
+    val createdAtEpochMs: Long,
+    val encryptedPayloadAtRest: String,
     val lastError: String? = null
 )

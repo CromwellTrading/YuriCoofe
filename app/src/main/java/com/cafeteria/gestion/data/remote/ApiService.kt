@@ -64,6 +64,12 @@ interface ApiService {
         @Body payload: SalePayload
     ): Response<ApiEnvelope<SaleAcceptedResponse>>
 
+    @POST("api/v1/sales/forwarded")
+    suspend fun submitForwardedSale(
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body payload: SalePayload
+    ): Response<ApiEnvelope<SaleAcceptedResponse>>
+
     @GET("api/v1/sales")
     suspend fun getSales(
         @Query("from") from: String? = null,
@@ -98,6 +104,22 @@ interface ApiService {
 
     @POST("api/v1/devices/push-token")
     suspend fun registerPushToken(@Body body: Map<String, String>): Response<ApiEnvelope<Boolean>>
+
+    @POST("api/v1/stations")
+    suspend fun registerLocalStation(@Body body: LocalStationRegistrationRequest): Response<ApiEnvelope<LocalStationDto>>
+
+    @GET("api/v1/stations")
+    suspend fun getLocalStations(): Response<ApiEnvelope<List<LocalStationDto>>>
+
+    @POST("api/v1/stations/{id}/revoke")
+    suspend fun revokeLocalStation(@Path("id") id: String): Response<ApiEnvelope<LocalStationDto>>
+
+    @POST("api/v1/stations/{id}/heartbeat")
+    suspend fun localStationHeartbeat(
+        @Path("id") id: String,
+        @Header("X-Station-Secret") secret: String,
+        @Body body: LocalStationHeartbeatRequest
+    ): Response<ApiEnvelope<LocalStationDto>>
 }
 
 data class SaleAcceptedResponse(
