@@ -109,6 +109,10 @@ interface ProductQueueDao {
     @Query("UPDATE product_queue SET status = :status, lastError = :error WHERE id = :id")
     suspend fun updateStatus(id: String, status: String, error: String?)
 
+    /** Updates the persisted JSON payload while preserving the original operation UUID and ordering. */
+    @Query("UPDATE product_queue SET payloadJson = :payloadJson WHERE id = :id")
+    suspend fun updatePayload(id: String, payloadJson: String)
+
     @Query("UPDATE product_queue SET status = 'PENDING', lastError = NULL WHERE ownerId = :ownerId AND status = 'NEEDS_REVIEW'")
     suspend fun retryOwnerReview(ownerId: String): Int
 
