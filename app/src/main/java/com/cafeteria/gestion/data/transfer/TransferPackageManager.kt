@@ -43,9 +43,12 @@ class TransferPackageManager(private val context: Context, private val gson: Gso
         return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
     }
 
-    fun encode(plainJson: String, transferCode: String): ByteArray {
+    fun encode(plainJson: String, transferCode: String): ByteArray =
+        encodeBytes(plainJson.toByteArray(Charsets.UTF_8), transferCode)
+
+    /** Igual que [encode] pero para bytes arbitrarios (p. ej. JSON ya comprimido para el transporte por QR). */
+    fun encodeBytes(plain: ByteArray, transferCode: String): ByteArray {
         validateCode(transferCode)
-        val plain = plainJson.toByteArray(Charsets.UTF_8)
         require(plain.size <= MAX_PACKAGE_BYTES) { "El paquete supera el límite de 40 MiB." }
         val salt = ByteArray(SALT_BYTES).also { SecureRandom().nextBytes(it) }
         val nonce = ByteArray(NONCE_BYTES).also { SecureRandom().nextBytes(it) }
@@ -68,7 +71,10 @@ class TransferPackageManager(private val context: Context, private val gson: Gso
         return result
     }
 
-    fun decode(encryptedPackage: ByteArray, transferCode: String): String {
+    fun decode(encryptedPackage: ByteArray, transferCode: String): String =
+        decodeBytes(encryptedPackage, transferCode).toString(Charsets.UTF_8)
+
+    fun decodeBytes(encryptedPackage: ByteArray, transferCode: String): ByteArray {
         validateCode(transferCode)
         require(encryptedPackage.size in (4 + 1 + SALT_BYTES + NONCE_BYTES + 16)..MAX_PACKAGE_BYTES) {
             "El archivo de transferencia está vacío, incompleto o supera 40 MiB."
@@ -87,9 +93,9 @@ class TransferPackageManager(private val context: Context, private val gson: Gso
         cipher.init(Cipher.DECRYPT_MODE, deriveKey(transferCode, salt), GCMParameterSpec(128, nonce))
         cipher.updateAAD(header)
         return try {
-            cipher.doFinal(ciphertext).toString(Charsets.UTF_8)
+            cipher.doFinal(ciphertext)
         } catch (_: Exception) {
-            throw IllegalArgumentException("No se pudo autenticar el paquete. Comprueba el código de transferencia o vuelve a copiar el archivo.")
+            throw IllegalArgumentException("No se pudo autenticar el paquete. Comprueba el código de transferencia (o el PIN) o vuelve a copiar el archivo.")
         }
     }
 

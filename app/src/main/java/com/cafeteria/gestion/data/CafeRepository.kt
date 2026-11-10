@@ -10,6 +10,7 @@ import com.cafeteria.gestion.data.local.ProductQueueEntity
 import com.cafeteria.gestion.data.local.SaleQueueEntity
 import com.cafeteria.gestion.data.local.AdminOperationEntity
 import com.cafeteria.gestion.data.local.TransferBundleEntity
+import com.cafeteria.gestion.data.transfer.QrTransferCodec
 import com.cafeteria.gestion.data.transfer.TransferPackageManager
 import com.cafeteria.gestion.data.transfer.TransferPackagePayload
 import com.cafeteria.gestion.data.transfer.TransferPackageDocument
@@ -1172,16 +1173,33 @@ class CafeRepository(
 
     /** Import is idempotent by bundle UUID and by each operation UUID; a conflicting reuse is rejected. */
     suspend fun importTransferPackage(source: Uri, transferCode: String): TransferImportSummary = withContext(Dispatchers.IO) {
+        val encrypted = contentResolver.openInputStream(source)?.use { input ->
+            readLimited(input, 40 * 1024 * 1024)
+        } ?: throw IllegalStateException("No se pudo leer el archivo recibido.")
+        importTransferBytes(encrypted, transferCode, compressed = false, qrPin = null)
+    }
+
+    /** Importa un paquete recibido por QR (fragmentos ya reensamblados) con el PIN que muestra el teléfono emisor. */
+    suspend fun importQrTransfer(encrypted: ByteArray, pin: String): TransferImportSummary =
+        importTransferBytes(encrypted, "", compressed = true, qrPin = pin.trim())
+
+    private suspend fun importTransferBytes(
+        encrypted: ByteArray,
+        transferCode: String,
+        compressed: Boolean,
+        qrPin: String?
+    ): TransferImportSummary = withContext(Dispatchers.IO) {
         val session = sessionStore.getSession() ?: throw IllegalStateException("Inicia sesión para recibir una transferencia.")
         require(session.role in setOf(Roles.OWNER, Roles.WORKER, Roles.LOCAL_STATION)) {
             "Esta cuenta no puede recibir paquetes de trabajo."
         }
+        require(qrPin == null || session.role != Roles.LOCAL_STATION) {
+            "La estación local recibe los paquetes por archivo cifrado, no por QR."
+        }
         val businessId = session.businessId ?: throw IllegalStateException("La cafetería de esta sesión no está identificada.")
-        val resolvedTransferCode = resolveTransferSecret(session, transferCode)
-        val encrypted = contentResolver.openInputStream(source)?.use { input ->
-            readLimited(input, 40 * 1024 * 1024)
-        } ?: throw IllegalStateException("No se pudo leer el archivo recibido.")
-        val decrypted = transferManager.decode(encrypted, resolvedTransferCode)
+        val resolvedTransferCode = if (qrPin != null) qrSecret(session, qrPin) else resolveTransferSecret(session, transferCode)
+        val decryptedBytes = transferManager.decodeBytes(encrypted, resolvedTransferCode)
+        val decrypted = (if (compressed) QrTransferCodec.decompress(decryptedBytes) else decryptedBytes).toString(Charsets.UTF_8)
         val document = runCatching { gson.fromJson(decrypted, TransferPackageDocument::class.java) }.getOrNull()
             ?: throw IllegalArgumentException("El contenido del paquete no tiene un formato válido.")
         val payload = document.payload ?: throw IllegalArgumentException("El paquete no contiene operaciones.")
@@ -1271,10 +1289,13 @@ class CafeRepository(
         var newProducts = 0
         var newInventory = 0
         var duplicates = 0
+        var catalogUpdated = 0
+        var stockWarnings = 0
         database.withTransaction {
+            val freshSales = mutableListOf<SaleQueueEntity>()
             payload.sales.forEach { incoming ->
                 val inserted = queue.insertIfAbsent(incoming.copy(businessId = businessId))
-                if (inserted == -1L) duplicates++ else newSales++
+                if (inserted == -1L) duplicates++ else { newSales++; freshSales += incoming }
             }
             payload.productOperations.forEach { incoming ->
                 val authorizedOwner = session.role == Roles.OWNER && incoming.ownerId == session.userId
@@ -1298,6 +1319,11 @@ class CafeRepository(
                 val inserted = adminQueue.insertIfAbsent(copy)
                 if (inserted == -1L) duplicates++ else newInventory++
             }
+            // El inventario de ESTE teléfono debe reflejar lo que ya se vendió en el otro (traspaso de turno)
+            // y, si el paquete viene de Yuri, adoptar su catálogo. Todo dentro de la misma transacción.
+            val stockResult = applyIncomingStock(payload, session, freshSales)
+            catalogUpdated = stockResult.first
+            stockWarnings = stockResult.second
             transferBundles.insertIfAbsent(
                 TransferBundleEntity(
                     bundleId = payload.bundleId,
@@ -1314,10 +1340,144 @@ class CafeRepository(
             )
         }
         SalesSyncScheduler.enqueueNow(appContext)
+        val parts = buildList {
+            if (newSales > 0) add("$newSales venta(s) nueva(s)")
+            if (catalogUpdated > 0) add("$catalogUpdated producto(s) del inventario de Yuri")
+            if (duplicates > 0) add("$duplicates ya estaban registradas")
+        }
+        val detail = if (parts.isEmpty()) "No había nada nuevo que importar." else parts.joinToString(" · ")
+        val warning = if (stockWarnings > 0) " Atención: $stockWarnings producto(s) no cuadraron con el stock local; revisa con un conteo físico." else ""
         TransferImportSummary(
             payload.bundleId, newSales, newProducts, newInventory, duplicates,
-            "Paquete recibido y verificado. Las operaciones originales se conservaron; las que no pertenecen a esta cuenta quedaron para revisión."
+            "Paquete recibido y verificado. $detail.$warning",
+            catalogProductsUpdated = catalogUpdated, stockWarnings = stockWarnings
         )
+    }
+
+    // ───────────────────────── Traspaso por QR (1.7.0) ─────────────────────────
+
+    /** Fragmentos listos para mostrarse en bucle como QR + PIN de 6 dígitos que debe teclear quien escanea. */
+    class QrOutgoing(
+        val frames: List<String>,
+        val pin: String,
+        val salesCount: Int,
+        val catalogCount: Int,
+        val bundleId: String,
+        val packageBytes: Int
+    )
+
+    /** El PIN se mezcla con la cafetería: un paquete de otra cafetería nunca descifra, aunque el PIN coincida. */
+    private fun qrSecret(session: UserSession, pin: String): String {
+        val businessId = session.businessId ?: throw IllegalStateException("La cafetería de esta sesión no está identificada.")
+        require(pin.length == 6 && pin.all { it.isDigit() }) { "El PIN debe tener 6 dígitos." }
+        return "YCQR1|$businessId|$pin"
+    }
+
+    private fun newQrPin(): String = String.format(java.util.Locale.US, "%06d", java.security.SecureRandom().nextInt(1_000_000))
+
+    /**
+     * Prepara el traspaso por QR. Contenido:
+     *  - todas las ventas sin confirmar que este teléfono conoce (propias y recibidas de otras trabajadoras);
+     *  - si quien envía es Yuri (OWNER): foto del inventario activo, para que las trabajadoras lo tengan offline.
+     * No se borra nada del origen. Las fotos de productos no viajan por QR (solo URLs https ya subidas).
+     */
+    suspend fun prepareQrTransfer(): QrOutgoing = withContext(Dispatchers.IO) {
+        val session = sessionStore.getSession() ?: throw IllegalStateException("Inicia sesión para preparar un traspaso.")
+        require(session.role == Roles.OWNER || session.role == Roles.WORKER) { "Esta cuenta no puede enviar traspasos." }
+        val businessId = session.businessId ?: throw IllegalStateException("La cafetería de esta sesión no está identificada.")
+        val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID)
+            ?.takeIf { it.isNotBlank() } ?: "android-${UUID.randomUUID()}"
+        val sales = queue.getUnresolved().filter { it.businessId == businessId || (it.businessId.isBlank() && it.workerId == session.userId) }
+        val catalog = if (session.role == Roles.OWNER) {
+            products.getAll()
+                .filter { it.active && !it.stockIsApproximate }
+                .map { it.copy(imageUrl = it.imageUrl?.takeIf { url -> url.startsWith("https://") }) }
+        } else null
+        require(sales.isNotEmpty() || !catalog.isNullOrEmpty()) {
+            "No hay ventas pendientes ni inventario que enviar desde este teléfono."
+        }
+        val history = runCatching { accumulatedTransferHistory() }.getOrDefault(emptyList())
+            .sortedByDescending { it.createdAt }.take(12).map { it.copy(operationIdsJson = "[]") }
+        val bundleId = UUID.randomUUID().toString()
+        val createdAt = OffsetDateTime.now().toString()
+        val payload = TransferPackagePayload(
+            bundleId = bundleId, businessId = businessId, sourceDeviceId = deviceId,
+            sourceUserId = session.userId, sourceRole = session.role, createdAt = createdAt,
+            sales = sales, productOperations = emptyList(), adminOperations = emptyList(),
+            productImagesBase64 = emptyMap(), transferHistory = history,
+            catalog = catalog, catalogAt = if (catalog != null) createdAt else null
+        )
+        val payloadJson = gson.toJson(payload)
+        val digest = transferManager.sha256(payloadJson)
+        val documentBytes = gson.toJson(TransferPackageDocument(payload, digest)).toByteArray(Charsets.UTF_8)
+        val pin = newQrPin()
+        val encrypted = transferManager.encodeBytes(QrTransferCodec.compress(documentBytes), qrSecret(session, pin))
+        val frames = QrTransferCodec.encodeFrames(QrTransferCodec.newSessionId(), encrypted)
+        // Solo metadatos: las ventas siguen en la cola de origen, no hace falta guardar otra copia del contenido.
+        transferBundles.insertIfAbsent(
+            TransferBundleEntity(
+                bundleId = bundleId, sourceDeviceId = deviceId, destinationDeviceId = null,
+                direction = "EXPORTED", contentHash = digest,
+                operationIdsJson = gson.toJson(sales.map { it.id }),
+                status = "EXPORTED_UNCONFIRMED", createdAt = createdAt,
+                createdAtEpochMs = System.currentTimeMillis(),
+                encryptedPayloadAtRest = transferManager.sealAtRest("{\"qr\":true}")
+            )
+        )
+        QrOutgoing(frames, pin, sales.size, catalog?.size ?: 0, bundleId, encrypted.size)
+    }
+
+    /**
+     * Mantiene el inventario local coherente tras recibir un paquete. Se ejecuta DENTRO de la transacción de importación.
+     *
+     * 1) Paquete de Yuri hacia una trabajadora con catálogo: se adopta su inventario (nombres, precios, existencias).
+     *    Después se vuelven a descontar las ventas locales sin confirmar que Yuri NO conocía (las que no vienen en el paquete).
+     *    Los productos que ya no están activos en el inventario de Yuri se desactivan aquí.
+     * 2) En cualquier otro caso: se descuenta el stock de las ventas nuevas hechas por OTRA persona (relevo de turno).
+     *    Las ventas repetidas no descuentan nada: el insert por UUID ya las filtró.
+     *
+     * Devuelve (productos del catálogo actualizados, productos con descuadre de stock).
+     * Un descuadre nunca cancela la importación: la venta queda registrada y se avisa para hacer un conteo físico.
+     */
+    private suspend fun applyIncomingStock(
+        payload: TransferPackagePayload,
+        session: UserSession,
+        freshSales: List<SaleQueueEntity>
+    ): Pair<Int, Int> {
+        var warnings = 0
+        val snapshot = payload.catalog
+        val adoptSnapshot = !snapshot.isNullOrEmpty() && payload.sourceRole == Roles.OWNER && session.role == Roles.WORKER
+        if (adoptSnapshot && snapshot != null) {
+            val knownByOwner = payload.sales.map { it.id }.toSet()
+            val localUnknownToOwner = queue.getUnresolved().filter { it.id !in knownByOwner }
+            val snapshotIds = snapshot.map { it.id }.toSet()
+            products.getAll().filter { it.active && it.id !in snapshotIds && !it.stockIsApproximate }.forEach {
+                products.upsert(it.copy(active = false))
+            }
+            snapshot.forEach { incoming ->
+                val keepImage = incoming.imageUrl ?: products.findById(incoming.id)?.imageUrl
+                products.upsert(incoming.copy(imageUrl = keepImage, stockIsApproximate = false, active = true))
+            }
+            localUnknownToOwner.forEach { if (!deductSaleFromLocalStock(it)) warnings++ }
+            return snapshot.size to warnings
+        }
+        freshSales.filter { it.workerId != session.userId }.forEach { if (!deductSaleFromLocalStock(it)) warnings++ }
+        return 0 to warnings
+    }
+
+    private suspend fun deductSaleFromLocalStock(sale: SaleQueueEntity): Boolean {
+        val payload = runCatching { gson.fromJson(sale.payloadJson, SalePayload::class.java) }.getOrNull() ?: return false
+        var allOk = true
+        payload.items.forEach { item ->
+            val current = products.findById(item.productId)
+            if (current == null) { allOk = false; return@forEach }
+            val next = runCatching {
+                calculateUpdatedStock(current, item.unitQuantity, item.subunitQuantity)
+                    .copy(inventoryRevision = Math.addExact(current.inventoryRevision, 1L))
+            }.getOrNull()
+            if (next == null) allOk = false else products.upsert(next)
+        }
+        return allOk
     }
 
     data class LocalStationStats(

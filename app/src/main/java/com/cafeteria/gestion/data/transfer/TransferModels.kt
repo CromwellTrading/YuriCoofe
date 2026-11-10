@@ -1,6 +1,7 @@
 package com.cafeteria.gestion.data.transfer
 
 import com.cafeteria.gestion.data.local.AdminOperationEntity
+import com.cafeteria.gestion.data.local.ProductEntity
 import com.cafeteria.gestion.data.local.ProductQueueEntity
 import com.cafeteria.gestion.data.local.SaleQueueEntity
 
@@ -17,7 +18,13 @@ data class TransferPackagePayload(
     val productOperations: List<ProductQueueEntity>,
     val adminOperations: List<AdminOperationEntity>,
     val productImagesBase64: Map<String, String> = emptyMap(),
-    val transferHistory: List<TransferHistoryItem> = emptyList()
+    val transferHistory: List<TransferHistoryItem> = emptyList(),
+    /**
+     * Foto del inventario de Yuri (solo paquetes enviados por OWNER). Nullable a propósito: los paquetes
+     * antiguos no lo traen y Gson deja ese campo en null; además se omite al serializar, así el hash no cambia.
+     */
+    val catalog: List<ProductEntity>? = null,
+    val catalogAt: String? = null
 )
 
 data class TransferPackageDocument(
@@ -43,5 +50,7 @@ data class TransferImportSummary(
     val productOperationsAdded: Int,
     val inventoryOperationsAdded: Int,
     val duplicateOperations: Int,
-    val message: String
+    val message: String,
+    val catalogProductsUpdated: Int = 0,
+    val stockWarnings: Int = 0
 )

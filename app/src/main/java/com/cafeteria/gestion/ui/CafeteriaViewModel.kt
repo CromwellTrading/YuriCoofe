@@ -438,6 +438,40 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
         if (state.value.session?.role != Roles.LOCAL_STATION) SalesSyncScheduler.enqueueNow(getApplication())
     }
 
+    /**
+     * Traspaso por QR. No usa runBusy a propósito: el resultado vuelve al diálogo del traspaso (que tapa el
+     * Snackbar global) y así los errores se muestran donde la persona está mirando.
+     */
+    fun prepareQrTransfer(onResult: (Result<CafeRepository.QrOutgoing>) -> Unit) {
+        viewModelScope.launch {
+            onResult(runCatching { repository.prepareQrTransfer() })
+            state.value = state.value.copy(pendingCount = runCatching { repository.pendingCount() }.getOrDefault(state.value.pendingCount))
+        }
+    }
+
+    fun receiveQrTransfer(encrypted: ByteArray, pin: String, onResult: (Result<String>) -> Unit) {
+        viewModelScope.launch {
+            state.value = state.value.copy(busy = true)
+            val result = runCatching { repository.importQrTransfer(encrypted, pin) }
+            if (result.isSuccess) {
+                runCatching {
+                    val cached = repository.getCachedProducts()
+                    val current = state.value.session
+                    state.value = state.value.copy(
+                        products = if (current == null || current.role == Roles.CUSTOMER) cached.filter { it.publicVisible } else cached
+                    )
+                    refreshSalesMerged()
+                }
+                SalesSyncScheduler.enqueueNow(getApplication())
+            }
+            state.value = state.value.copy(
+                busy = false,
+                pendingCount = runCatching { repository.pendingCount() }.getOrDefault(state.value.pendingCount)
+            )
+            onResult(result.map { it.message })
+        }
+    }
+
     fun exportStationCollection(uri: Uri) = runBusy("No se pudo consolidar la estación.") {
         val result = repository.exportCollectedStationPackage(uri)
         state.value = state.value.copy(stationStats = repository.localStationStats(), message = result)

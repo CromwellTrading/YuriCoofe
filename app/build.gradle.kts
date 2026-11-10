@@ -17,8 +17,8 @@ android {
         applicationId = "com.cafeteria.gestion"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.6.0"
+        versionCode = 9
+        versionName = "1.7.0"
         fun configValue(name: String): String = providers.gradleProperty(name).orElse("").get()
         fun quotedConfig(name: String) = "\"${configValue(name).replace("\\", "\\\\").replace("\"", "\\\"")}\""
         buildConfigField("String", "API_BASE_URL", quotedConfig("API_BASE_URL"))
@@ -95,6 +95,13 @@ dependencies {
     implementation("com.google.code.gson:gson:2.11.0")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // Traspaso por QR: cámara (CameraX) + lectura/generación de QR (ZXing, 100% offline, sin Google Play Services)
+    implementation("androidx.camera:camera-core:1.4.1")
+    implementation("androidx.camera:camera-camera2:1.4.1")
+    implementation("androidx.camera:camera-lifecycle:1.4.1")
+    implementation("androidx.camera:camera-view:1.4.1")
+    implementation("com.google.zxing:core:3.5.3")
     implementation("com.google.firebase:firebase-messaging:24.1.0")
 
     testImplementation("junit:junit:4.13.2")

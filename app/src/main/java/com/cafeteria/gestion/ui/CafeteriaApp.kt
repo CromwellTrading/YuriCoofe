@@ -65,6 +65,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -85,6 +86,14 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.*
+import androidx.compose.material.icons.outlined.QrCode2
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Remove
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.TopAppBarDefaults
+import com.cafeteria.gestion.ui.theme.YuriTheme
+import com.cafeteria.gestion.ui.theme.resolveDark
+import com.cafeteria.gestion.ui.theme.tileBackdrop
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -130,80 +139,11 @@ private fun exactCupLabel(serverTotal: Long?, localTotal: Long?): String =
 @Composable
 fun CafeteriaApp(viewModel: CafeteriaViewModel) {
     val state by viewModel.state.collectAsState()
-    val systemDark = isSystemInDarkTheme()
-    val dark = when (state.appearance) {
-        "DARK" -> true
-        "LIGHT" -> false
-        else -> systemDark
-    }
-    val coffeePalette = state.palette == "COFFEE"
-    val primary = when (state.palette) {
-        "COFFEE" -> if (dark) Color(0xFFD7AD83) else Color(0xFF70472F)
-        "GREEN" -> Color(0xFF23815E)
-        "BLUE" -> Color(0xFF3267B7)
-        "ORANGE" -> Color(0xFFC16A2B)
-        "ROSE" -> Color(0xFFB54B78)
-        else -> Color(0xFF6250D8)
-    }
-    val primaryContainer = when (state.palette) {
-        "COFFEE" -> if (dark) Color(0xFF4B3426) else Color(0xFFEAD9C7)
-        "GREEN" -> if (dark) Color(0xFF244C3D) else Color(0xFFDDF3E9)
-        "BLUE" -> if (dark) Color(0xFF263F66) else Color(0xFFE1EBFF)
-        "ORANGE" -> if (dark) Color(0xFF5C3D27) else Color(0xFFFFE9D8)
-        "ROSE" -> if (dark) Color(0xFF5A3043) else Color(0xFFFFE2EC)
-        else -> if (dark) Color(0xFF40366D) else Color(0xFFECE8FF)
-    }
-    val scheme = if (coffeePalette && dark) {
-        darkColorScheme(
-            primary = Color(0xFFD7AD83), onPrimary = Color(0xFF2B1D14),
-            primaryContainer = Color(0xFF4B3426), onPrimaryContainer = Color(0xFFF5E6D7),
-            background = Color(0xFF17120F), surface = Color(0xFF241C17),
-            onSurface = Color(0xFFF6ECE3), surfaceVariant = Color(0xFF352920),
-            onSurfaceVariant = Color(0xFFCBB9A8), secondary = Color(0xFFD6A779),
-            tertiary = Color(0xFFC78D61), error = Color(0xFFFFB4AB)
-        )
-    } else if (coffeePalette) {
-        lightColorScheme(
-            primary = Color(0xFF70472F), onPrimary = Color(0xFFFFF8F1),
-            primaryContainer = Color(0xFFEAD9C7), onPrimaryContainer = Color(0xFF3D291D),
-            background = Color(0xFFF6F0E8), surface = Color(0xFFFFFCF8),
-            onSurface = Color(0xFF30251F), surfaceVariant = Color(0xFFEDE3D8),
-            onSurfaceVariant = Color(0xFF79695D), secondary = Color(0xFFA87443),
-            tertiary = Color(0xFF8E6448), error = Color(0xFFB3261E)
-        )
-    } else if (dark) {
-        darkColorScheme(
-            primary = primary,
-            onPrimary = Color.White,
-            primaryContainer = primaryContainer,
-            onPrimaryContainer = Color(0xFFF6F1FF),
-            background = Color(0xFF111119),
-            surface = Color(0xFF1C1B25),
-            onSurface = Color(0xFFF2F0F8),
-            surfaceVariant = Color(0xFF2A2935),
-            onSurfaceVariant = Color(0xFFBDB9CB),
-            secondary = Color(0xFF78C5A5),
-            error = Color(0xFFFFB4AB)
-        )
-    } else {
-        lightColorScheme(
-            primary = primary,
-            onPrimary = Color.White,
-            primaryContainer = primaryContainer,
-            onPrimaryContainer = Color(0xFF302568),
-            background = Color(0xFFF8F7FC),
-            surface = Color.White,
-            onSurface = Color(0xFF232235),
-            surfaceVariant = Color(0xFFF0EEF5),
-            onSurfaceVariant = Color(0xFF777589),
-            secondary = Color(0xFF3E8C73),
-            error = Color(0xFFB3261E)
-        )
-    }
-    MaterialTheme(colorScheme = scheme) {
-        Surface(modifier = Modifier.fillMaxSize(), color = scheme.background) {
+    val dark = resolveDark(state.appearance)
+    YuriTheme(palette = state.palette, dark = dark) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             when {
-                state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = scheme.primary) }
+                state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = MaterialTheme.colorScheme.primary) }
                 else -> MainShell(state, viewModel)
             }
         }
@@ -223,7 +163,7 @@ private fun CustomerAuthScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) 
     Box(Modifier.fillMaxSize().background(colors.background)) {
         Box(
             Modifier.fillMaxWidth().height(310.dp)
-                .background(Brush.linearGradient(listOf(Color(0xFF2C1B13), Color(0xFF65432D), Color(0xFF9A704C))))
+                .background(Brush.linearGradient(listOf(Color(0xFF241812), Color(0xFF4A2A18), Color(0xFF7A3E22))))
         )
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 28.dp),
@@ -238,9 +178,9 @@ private fun CustomerAuthScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) 
                 Icon(Icons.Outlined.Storefront, null, tint = Color(0xFFFFE8CF), modifier = Modifier.size(42.dp))
             }
             Spacer(Modifier.height(14.dp))
-            Text("YuriCoofe", color = Color(0xFFFFF4E7), fontSize = 31.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.2.sp)
+            Text("YuriCoofe", color = Color(0xFFFFF4E7), fontSize = 34.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(7.dp))
-            Text("Una pausa rica empieza aquí.", color = Color(0xFFE8D4C0), fontSize = 14.sp)
+            Text("Inventario y ventas, también sin internet.", color = Color(0xFFE8D4C0), fontSize = 14.sp)
             Spacer(Modifier.height(30.dp))
 
             Card(
@@ -252,12 +192,12 @@ private fun CustomerAuthScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) 
             ) {
                 Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Text(
-                        if (registerMode) "Crea tu cuenta" else "Bienvenido",
+                        if (registerMode) "Cuenta de cliente" else "Entrar",
                         fontSize = 25.sp, fontWeight = FontWeight.Bold, color = colors.onSurface
                     )
                     Text(
                         if (registerMode) "Regístrate con tu nombre y una contraseña para guardar tus preferencias y consultar la cafetería."
-                        else "Entra con tu nombre o usuario y descubre lo que tenemos preparado.",
+                        else "Usa el usuario y la contraseña que te dio Yuri.",
                         color = colors.onSurfaceVariant, fontSize = 13.sp, lineHeight = 19.sp
                     )
                     OutlinedTextField(
@@ -325,7 +265,7 @@ private fun CustomerAuthScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) 
                         confirmPassword = ""
                         vm.clearMessage()
                     }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) {
-                        Text(if (registerMode) "Ya tengo una cuenta · Iniciar sesión" else "¿Primera vez aquí? Crear cuenta", color = colors.primary)
+                        Text(if (registerMode) "Volver a entrar" else "Soy cliente: crear cuenta", color = colors.onSurfaceVariant, fontSize = 12.sp)
                     }
                 }
             }
@@ -357,7 +297,7 @@ private fun CustomerAuthScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) 
                 }
             }
             Spacer(Modifier.height(20.dp))
-            Text("Un solo acceso para todos.", color = colors.onSurfaceVariant, fontSize = 12.sp)
+            Text("Las ventas se guardan en este teléfono aunque no haya conexión.", color = colors.onSurfaceVariant, fontSize = 12.sp)
         }
     }
 }
@@ -394,6 +334,9 @@ private fun MainShell(state: CafeteriaUiState, vm: CafeteriaViewModel) {
             NavEntry(SCREEN_ANNOUNCEMENTS, "Avisos", Icons.Outlined.NotificationsActive)
         )
     }
+    var showQr by remember { mutableStateOf(false) }
+    val canTransfer = session.role == Roles.OWNER || session.role == Roles.WORKER
+    if (showQr && canTransfer) QrTransferHub(state, vm, onClose = { showQr = false })
     val snacks = remember { SnackbarHostState() }
     LaunchedEffect(state.message) { state.message?.let { snacks.showSnackbar(it); vm.clearMessage() } }
     LaunchedEffect(state.error) { state.error?.let { snacks.showSnackbar(it); vm.clearMessage() } }
@@ -402,36 +345,46 @@ private fun MainShell(state: CafeteriaUiState, vm: CafeteriaViewModel) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 title = {
                     Column {
-                        Text("YuriCoofe", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text("YuriCoofe", style = MaterialTheme.typography.titleLarge)
                         Text(
                             when (session.role) { Roles.OWNER -> "Administración"; Roles.WORKER -> "Punto de venta"; else -> "Tu cafetería" },
-                            fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 },
                 actions = {
-                    if (state.pendingCount > 0) {
-                        Badge(containerColor = warningColor(), contentColor = Color.White) { Text(state.pendingCount.toString()) }
-                        Spacer(Modifier.width(3.dp))
+                    if (canTransfer) {
+                        IconButton(onClick = { showQr = true }) { Icon(Icons.Outlined.QrCode2, contentDescription = "Traspaso por QR", tint = accentColor()) }
                     }
                     IconButton(onClick = vm::syncNow) {
-                        Icon(if (state.online) Icons.Outlined.CloudSync else Icons.Outlined.CloudOff, contentDescription = "Sincronizar", tint = if (state.online) accentColor() else MaterialTheme.colorScheme.onSurfaceVariant)
+                        Box {
+                            Icon(if (state.online) Icons.Outlined.CloudSync else Icons.Outlined.CloudOff, contentDescription = "Sincronizar", tint = if (state.online) successColor() else MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (state.pendingCount > 0) {
+                                Badge(Modifier.align(Alignment.TopEnd), containerColor = warningColor(), contentColor = Color.White) { Text(state.pendingCount.toString()) }
+                            }
+                        }
                     }
                     IconButton(onClick = { vm.setScreen(SCREEN_SETTINGS) }) { Icon(Icons.Outlined.Settings, contentDescription = "Ajustes") }
                 }
             )
         },
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                 nav.forEach { entry ->
                     NavigationBarItem(
                         selected = state.screen == entry.screen,
                         onClick = { vm.setScreen(entry.screen) },
                         icon = { Icon(entry.icon, contentDescription = entry.label) },
                         label = { Text(entry.label, maxLines = 1, fontSize = 10.sp) },
-                        alwaysShowLabel = true
+                        alwaysShowLabel = true,
+                        colors = NavigationBarItemDefaults.colors(
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            selectedTextColor = MaterialTheme.colorScheme.primary
+                        )
                     )
                 }
             }
@@ -447,11 +400,11 @@ private fun MainShell(state: CafeteriaUiState, vm: CafeteriaViewModel) {
                     Icon(if (state.pendingCount > 0) Icons.Outlined.CloudSync else Icons.Outlined.CloudOff, null, tint = if (state.pendingCount > 0) warningColor() else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        if (state.pendingCount > 0) "${state.pendingCount} operación(es) esperan sincronización o revisión. Los datos se conservan en este teléfono."
-                        else "Sin conexión. Puedes consultar los datos guardados; las ventas nuevas se conservarán en este teléfono.",
+                        if (state.pendingCount > 0) "${state.pendingCount} venta(s) o cambio(s) sin enviar. Están guardados en este teléfono: pásalos por QR o espera a tener internet."
+                        else "Sin internet. Sigue vendiendo: todo queda guardado en este teléfono.",
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)
                     )
-                    if (state.pendingCount > 0) TextButton(onClick = { vm.setScreen(if (session.role == Roles.OWNER) SCREEN_PRODUCTS else SCREEN_SALES) }) { Text("Ver", color = accentColor()) }
+                    if (state.pendingCount > 0 && canTransfer) TextButton(onClick = { showQr = true }) { Text("Pasar por QR", color = accentColor()) }
                 }
             }
             when (state.screen) {
@@ -475,6 +428,8 @@ private fun SettingsScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
     val session = state.session
     val isCustomer = session?.role == Roles.CUSTOMER
     var transferCode by remember { mutableStateOf("") }
+    var showQrSettings by remember { mutableStateOf(false) }
+    if (showQrSettings) QrTransferHub(state, vm, onClose = { showQrSettings = false })
     LaunchedEffect(session?.role) {
         if (session?.role == Roles.OWNER) vm.loadStationPairingCode()
     }
@@ -544,9 +499,20 @@ private fun SettingsScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
         }
 
         if (session?.role == Roles.OWNER || session?.role == Roles.WORKER) {
+            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Text("Traspaso por QR", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("Sin internet ni archivos: un teléfono muestra los códigos y el otro los escanea. Pasa las ventas de un turno al siguiente, o el inventario de Yuri a las trabajadoras.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Button(onClick = { showQrSettings = true }, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(14.dp)) {
+                        Icon(Icons.Outlined.QrCode2, null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Abrir traspaso por QR", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
             Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    Text("Transferencia offline", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                    Text("Transferencia por archivo cifrado", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                     Text("Los paquetes incluyen ventas pendientes y, desde administración, cambios de productos e inventario. Se cifran antes de guardarlos como archivo. Usa el mismo código en origen y destino.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedTextField(
                         value = transferCode, onValueChange = { transferCode = it },
@@ -716,21 +682,45 @@ private fun DashboardScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
-                Text("Hola, ${state.session?.displayName?.substringBefore(' ') ?: ""}", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Text("Resumen del negocio · $today", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                Text("Hola, ${state.session?.displayName?.substringBefore(' ') ?: ""}", style = MaterialTheme.typography.headlineMedium)
+                Text("Resumen del negocio · $today", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
             IconButton(onClick = vm::refreshAll) { Icon(Icons.Outlined.Refresh, "Actualizar") }
         }
         if (state.session?.role == Roles.OWNER) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SummaryCard("Efectivo CUP", if (state.dashboard != null) exactCupLabel(state.dashboard.cashCup, null) else exactCupLabel(null, cash), Icons.Outlined.PointOfSale, Modifier.weight(1f))
-                SummaryCard("Transferencia", if (state.dashboard != null) exactCupLabel(state.dashboard.transferCup, null) else exactCupLabel(null, transfer), Icons.Outlined.CloudSync, Modifier.weight(1f))
+            val cashValue: Long? = if (state.dashboard != null) state.dashboard.cashCup else cash
+            val transferValue: Long? = if (state.dashboard != null) state.dashboard.transferCup else transfer
+            val heroTotal: Long? = if (cashValue != null && transferValue != null) runCatching { Math.addExact(cashValue, transferValue) }.getOrNull() else null
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
+                    .background(Brush.linearGradient(listOf(Color(0xFF241812), Color(0xFF4A2A18), Color(0xFF7A3E22))))
+                    .tileBackdrop(Color.White.copy(alpha = 0.07f))
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text("CAJA DE HOY", color = Color(0xFFE8D4C0), style = MaterialTheme.typography.labelMedium, letterSpacing = 1.5.sp)
+                Text(if (heroTotal != null) exactCupLabel(heroTotal, null) else "—", color = Color(0xFFFFF4E7), style = MaterialTheme.typography.displaySmall)
+                Text("${state.dashboard?.saleCount ?: salesToday.size} operaciones", color = Color(0xFFE8D4C0), style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+                val cashPart = (cashValue ?: 0L).coerceAtLeast(0L).toFloat()
+                val transferPart = (transferValue ?: 0L).coerceAtLeast(0L).toFloat()
+                val sumParts = cashPart + transferPart
+                Row(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(Color.White.copy(alpha = 0.15f))) {
+                    if (sumParts > 0f) {
+                        Box(Modifier.weight(maxOf(cashPart, 0.001f)).fillMaxHeight().background(Color(0xFFFFC98B)))
+                        Box(Modifier.weight(maxOf(transferPart, 0.001f)).fillMaxHeight().background(Color(0xFF6FD6C2)))
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("● Efectivo ${exactCupLabel(cashValue, null)}", color = Color(0xFFFFC98B), style = MaterialTheme.typography.labelMedium)
+                    Text("● Transferencia ${exactCupLabel(transferValue, null)}", color = Color(0xFF6FD6C2), style = MaterialTheme.typography.labelMedium)
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SummaryCard("Operaciones", (state.dashboard?.saleCount ?: salesToday.size).toString(), Icons.Outlined.Assessment, Modifier.weight(1f))
+                SummaryCard("Sin enviar", state.pendingCount.toString(), Icons.Outlined.CloudSync, Modifier.weight(1f), caution = state.pendingCount > 0)
                 SummaryCard("Stock bajo", (state.dashboard?.lowStockCount ?: lowStock).toString(), Icons.Outlined.WarningAmber, Modifier.weight(1f), caution = lowStock > 0)
             }
-            Text("Accesos rápidos", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text("Accesos rápidos", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 QuickAction("Añadir producto", Icons.Outlined.Add, Modifier.weight(1f)) { vm.setScreen(SCREEN_PRODUCTS) }
                 QuickAction("Ver ventas", Icons.Outlined.History, Modifier.weight(1f)) { vm.setScreen(SCREEN_SALES) }
@@ -739,13 +729,13 @@ private fun DashboardScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
                 QuickAction("Estadísticas", Icons.Outlined.Assessment, Modifier.weight(1f)) { vm.setScreen(SCREEN_REPORTS) }
                 QuickAction("Crear aviso", Icons.Outlined.Campaign, Modifier.weight(1f)) { vm.setScreen(SCREEN_ANNOUNCEMENTS) }
             }
-            Text("Últimos movimientos", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text("Últimos movimientos", style = MaterialTheme.typography.titleMedium)
             if (salesToday.isEmpty()) EmptyPanel("Todavía no hay ventas para hoy", "Las ventas aparecerán aquí cuando se registren y/o se cargue el historial del servidor.")
             else salesToday.take(5).forEach { SaleRow(it, state.session?.businessTimeZone) }
         } else {
-            Text("Tus productos", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text("Tus productos", style = MaterialTheme.typography.titleMedium)
             Text("Consulta lo que está disponible y revisa los cambios recientes.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Button(onClick = { vm.setScreen(if (state.session?.role == Roles.WORKER) SCREEN_SELL else SCREEN_CUSTOMER_CATALOG) }, modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { vm.setScreen(if (state.session?.role == Roles.WORKER) SCREEN_SELL else SCREEN_CUSTOMER_CATALOG) }, modifier = Modifier.fillMaxWidth().height(56.dp)) {
                 Text(if (state.session?.role == Roles.WORKER) "Registrar una venta" else "Ver catálogo")
             }
             if (state.pendingCount > 0) InfoPanel("Ventas pendientes", "${state.pendingCount} venta(s) están guardadas localmente y se enviarán al recuperar conexión.", PanelType.INFO)
@@ -755,23 +745,29 @@ private fun DashboardScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
 
 @Composable
 private fun SummaryCard(title: String, value: String, icon: ImageVector, modifier: Modifier = Modifier, caution: Boolean = false) {
-    Card(modifier, shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(1.dp)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.size(34.dp).clip(RoundedCornerShape(12.dp)).background(if (caution) MaterialTheme.colorScheme.tertiaryContainer else accentContainerColor()), contentAlignment = Alignment.Center) {
-                Icon(icon, null, tint = if (caution) MaterialTheme.colorScheme.onTertiaryContainer else accentColor(), modifier = Modifier.size(19.dp))
+    Card(
+        modifier, shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(if (caution) MaterialTheme.colorScheme.tertiaryContainer else accentContainerColor()), contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = if (caution) MaterialTheme.colorScheme.onTertiaryContainer else accentColor(), modifier = Modifier.size(20.dp))
             }
-            Text(title, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-            Text(value, fontWeight = FontWeight.Bold, fontSize = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Column {
+                Text(value, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+            }
         }
     }
 }
 
 @Composable
 private fun QuickAction(label: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    OutlinedButton(onClick = onClick, modifier = modifier.heightIn(min = 54.dp), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+    FilledTonalButton(onClick = onClick, modifier = modifier.heightIn(min = 54.dp), shape = RoundedCornerShape(16.dp)) {
         Icon(icon, null, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(6.dp))
-        Text(label, fontSize = 12.sp, maxLines = 2)
+        Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 2)
     }
 }
 
@@ -897,36 +893,54 @@ private fun ProductCard(
 ) {
     val untrackedPortionOnly = product.saleMode == SaleModes.SUBUNIT && product.subunitsPerUnit == null && product.stockUnits == 0L
     val low = !product.stockIsApproximate && !untrackedPortionOnly && product.stockUnits <= product.minimumStock
-    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(1.dp)) {
-        Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(12.dp), verticalAlignment = Alignment.Top) {
-            ProductImage(product.imageUrl, Modifier.size(82.dp))
+    val out = !product.stockIsApproximate && !untrackedPortionOnly && product.stockUnits <= 0L
+    var menu by remember { mutableStateOf(false) }
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, if (low) warningColor().copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            ProductImage(product.imageUrl, Modifier.size(76.dp))
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(product.name, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(product.categoryName, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                if (product.unitPriceCup != null) Text("${formatCup(product.unitPriceCup)} / ${product.unitName}", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                else if (product.subunitPriceCup != null) Text("${formatCup(product.subunitPriceCup)} / ${product.subunitName ?: "subunidad"}", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                product.subunitPriceCup?.let { Text("${formatCup(it)} / ${product.subunitName ?: "subunidad"}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp) }
-                product.subunitPriceTransfer?.let { Text("${formatCup(it)} por transferencia · ${product.subunitName ?: "subunidad"}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp) }
-                product.unitPriceTransfer?.let { Text("${formatCup(it)} por transferencia", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp) }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(product.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(product.categoryName, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                if (product.unitPriceCup != null) Text("${formatCup(product.unitPriceCup)} / ${product.unitName}", style = MaterialTheme.typography.titleSmall, color = accentColor())
+                else if (product.subunitPriceCup != null) Text("${formatCup(product.subunitPriceCup)} / ${product.subunitName ?: "subunidad"}", style = MaterialTheme.typography.titleSmall, color = accentColor())
+                if (product.unitPriceCup != null) product.subunitPriceCup?.let { Text("${formatCup(it)} / ${product.subunitName ?: "subunidad"}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall) }
+                product.unitPriceTransfer?.let { Text("${formatCup(it)} por transferencia", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall) }
+                product.subunitPriceTransfer?.let { Text("${formatCup(it)} por transferencia · ${product.subunitName ?: "subunidad"}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall) }
                 val stockDescription = when {
                     product.stockIsApproximate -> "Disponibilidad pública · actualiza para ver existencias exactas"
                     untrackedPortionOnly -> "Venta por ${product.subunitName ?: "porciones"} · sin conteo de stock"
                     else -> stockLabel(product)
                 }
-                Text(stockDescription, color = if (low) warningColor() else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                if (low && owner) Text("Stock bajo", color = warningColor(), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                if (product.subunitsPerUnit == null && product.saleMode == SaleModes.BOTH) Text("Las subunidades no descuentan cajas sin equivalencia definida.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    Modifier.clip(RoundedCornerShape(8.dp))
+                        .background(if (out) MaterialTheme.colorScheme.errorContainer else if (low) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        if (out) "Agotado" else if (low && owner) "$stockDescription · bajo" else stockDescription,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (out) MaterialTheme.colorScheme.onErrorContainer else if (low) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (product.subunitsPerUnit == null && product.saleMode == SaleModes.BOTH) Text("Las subunidades no descuentan cajas sin equivalencia definida.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (owner) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    IconButton(onClick = onEdit, enabled = !product.stockIsApproximate) { Icon(Icons.Outlined.Edit, "Editar producto", tint = accentColor()) }
-                    IconButton(onClick = onAdjust, enabled = !product.stockIsApproximate) { Icon(Icons.Outlined.Add, "Ajustar inventario", tint = successColor()) }
-                    IconButton(onClick = onCount, enabled = !product.stockIsApproximate) { Icon(Icons.Outlined.CheckCircle, "Registrar conteo físico", tint = accentColor()) }
-                    IconButton(onClick = onDeactivate) { Icon(Icons.Outlined.DeleteOutline, "Desactivar producto", tint = MaterialTheme.colorScheme.error) }
+                Box {
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "Acciones del producto") }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text("Editar") }, enabled = !product.stockIsApproximate, leadingIcon = { Icon(Icons.Outlined.Edit, null, tint = accentColor()) }, onClick = { menu = false; onEdit() })
+                        DropdownMenuItem(text = { Text("Ajustar inventario") }, enabled = !product.stockIsApproximate, leadingIcon = { Icon(Icons.Outlined.Add, null, tint = successColor()) }, onClick = { menu = false; onAdjust() })
+                        DropdownMenuItem(text = { Text("Conteo físico") }, enabled = !product.stockIsApproximate, leadingIcon = { Icon(Icons.Outlined.CheckCircle, null, tint = accentColor()) }, onClick = { menu = false; onCount() })
+                        DropdownMenuItem(text = { Text("Desactivar", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(Icons.Outlined.DeleteOutline, null, tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onDeactivate() })
+                    }
                 }
             } else {
-                IconButton(onClick = onSell, enabled = !product.stockIsApproximate) { Icon(Icons.Outlined.PointOfSale, "Registrar venta", tint = accentColor()) }
+                FilledTonalButton(onClick = onSell, enabled = !product.stockIsApproximate && !out, shape = RoundedCornerShape(14.dp)) { Text("Vender") }
             }
         }
     }
@@ -1254,7 +1268,7 @@ private fun SellDialog(product: ProductEntity, busy: Boolean, onDismiss: () -> U
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Registrar venta", fontWeight = FontWeight.Bold) },
+        title = { Text("Registrar venta", style = MaterialTheme.typography.titleLarge) },
         text = {
             Column(Modifier.heightIn(max = 550.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1270,8 +1284,8 @@ private fun SellDialog(product: ProductEntity, busy: Boolean, onDismiss: () -> U
                         )
                     }
                 }
-                if (product.saleMode != SaleModes.SUBUNIT) OutlinedTextField(unitCount, { unitCount = it }, label = { Text("${product.unitName} vendidas") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                if (product.saleMode != SaleModes.UNIT) OutlinedTextField(subunitCount, { subunitCount = it }, label = { Text("${product.subunitName ?: "Subunidades"} vendidas") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                if (product.saleMode != SaleModes.SUBUNIT) QuantityStepper("${product.unitName} vendidas", unitCount) { unitCount = it }
+                if (product.saleMode != SaleModes.UNIT) QuantityStepper("${product.subunitName ?: "Subunidades"} vendidas", subunitCount) { subunitCount = it }
                 if (product.subunitsPerUnit == null && product.saleMode == SaleModes.BOTH) InfoPanel("Inventario por porciones", "No se conoce la equivalencia entre el recipiente y las porciones. La venta y su importe se guardarán, pero las porciones no descontarán automáticamente recipientes.", PanelType.INFO)
                 if (product.saleMode == SaleModes.SUBUNIT && product.subunitsPerUnit == null) InfoPanel("Venta por porciones", "Registra los vasos o tazas servidos. El sistema calcula el importe, pero no inventa una cantidad de recipientes restantes.", PanelType.INFO)
                 product.subunitsPerUnit?.takeIf { it > 0 }?.let { equivalence ->
@@ -1281,19 +1295,15 @@ private fun SellDialog(product: ProductEntity, busy: Boolean, onDismiss: () -> U
                         Text("Para el inventario, esta cantidad equivale a $normalizedUnits ${product.unitName} y $normalizedSubunits ${product.subunitName ?: "subunidades"}.", color = accentColor(), fontSize = 12.sp, fontWeight = FontWeight.Medium)
                     }
                 }
-                Text("Método de pago", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(selected = method == PaymentMethods.CASH_CUP, onClick = { method = PaymentMethods.CASH_CUP })
-                    Column(Modifier.weight(1f)) { Text("Efectivo CUP"); Text("Precio según catálogo", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp) }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(selected = method == PaymentMethods.TRANSFER_CUP, onClick = { method = PaymentMethods.TRANSFER_CUP }, enabled = transferAvailable)
-                    Column(Modifier.weight(1f)) { Text("Transferencia"); Text(if (transferAvailable) "Precio según catálogo" else "No hay precio de transferencia para esta cantidad", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp) }
+                Text("¿Cómo pagó?", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PaymentChoice("Efectivo", "CUP", method == PaymentMethods.CASH_CUP, true, Modifier.weight(1f)) { method = PaymentMethods.CASH_CUP }
+                    PaymentChoice("Transferencia", if (transferAvailable) "CUP" else "sin precio", method == PaymentMethods.TRANSFER_CUP, transferAvailable, Modifier.weight(1f)) { method = PaymentMethods.TRANSFER_CUP }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Total", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(formatCup(total), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = accentColor())
+                    Text(if (total >= 0) formatCup(total) else "—", style = MaterialTheme.typography.headlineMedium, color = accentColor())
                 }
                 error?.let { InfoPanel("No se puede confirmar", it, PanelType.ERROR) }
             }
@@ -1308,10 +1318,46 @@ private fun SellDialog(product: ProductEntity, busy: Boolean, onDismiss: () -> U
                     else -> null
                 }
                 if (error == null) onConfirm(units, subunits, method)
-            }) { Text(if (busy) "Guardando…" else "Confirmar venta") }
+            }, modifier = Modifier.height(48.dp), shape = RoundedCornerShape(14.dp)) { Text(if (busy) "Guardando…" else "Confirmar venta", fontWeight = FontWeight.SemiBold) }
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancelar") } }
     )
+}
+
+@Composable
+private fun QuantityStepper(label: String, value: String, onChange: (String) -> Unit) {
+    val n = value.toLongOrNull() ?: 0L
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            FilledTonalButton(onClick = { onChange(max(0L, n - 1).toString()) }, modifier = Modifier.size(52.dp), contentPadding = PaddingValues(0.dp), shape = RoundedCornerShape(14.dp)) {
+                Icon(Icons.Outlined.Remove, "Quitar uno")
+            }
+            OutlinedTextField(
+                value, { v -> onChange(v.filter { it.isDigit() }.take(6)) },
+                modifier = Modifier.weight(1f), singleLine = true,
+                textStyle = MaterialTheme.typography.titleLarge.copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
+            FilledTonalButton(onClick = { onChange((n + 1).toString()) }, modifier = Modifier.size(52.dp), contentPadding = PaddingValues(0.dp), shape = RoundedCornerShape(14.dp)) {
+                Icon(Icons.Outlined.Add, "Añadir uno")
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaymentChoice(title: String, subtitle: String, selected: Boolean, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+    val border = if (selected) accentColor() else MaterialTheme.colorScheme.outlineVariant
+    Column(
+        modifier.clip(RoundedCornerShape(14.dp)).background(bg).border(if (selected) 2.dp else 1.dp, border, RoundedCornerShape(14.dp))
+            .clickable(enabled = enabled, onClick = onClick).padding(vertical = 12.dp, horizontal = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(title, style = MaterialTheme.typography.titleSmall, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+        Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 @Composable
@@ -1324,7 +1370,7 @@ private fun SalesScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(if (state.session?.role == Roles.WORKER) "Mis ventas" else "Ventas", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text(if (state.session?.role == Roles.WORKER) "Mis ventas" else "Ventas", style = MaterialTheme.typography.headlineMedium)
                 Text("Registro por hora, trabajadora y método de pago", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             }
             IconButton(onClick = vm::refreshSales) { Icon(Icons.Outlined.Refresh, "Actualizar") }
@@ -1338,22 +1384,30 @@ private fun SalesScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
 
 @Composable
 private fun SaleRow(sale: SaleSummary, timeZoneId: String? = null, onRetry: (() -> Unit)? = null) {
-    val statusColor = when (sale.status) { "SYNCED" -> MaterialTheme.colorScheme.tertiary; "NEEDS_REVIEW" -> MaterialTheme.colorScheme.error; else -> MaterialTheme.colorScheme.secondary }
-    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.fillMaxWidth().padding(13.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    val statusColor = when (sale.status) { "SYNCED" -> successColor(); "NEEDS_REVIEW" -> MaterialTheme.colorScheme.error; else -> warningColor() }
+    val statusText = when (sale.status) { "SYNCED" -> "Enviada"; "NEEDS_REVIEW" -> "Revisar"; else -> "Guardada en el teléfono" }
+    val transfer = sale.paymentMethod == PaymentMethods.TRANSFER_CUP
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
-                    Text(sale.summary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Text(sale.workerName, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    Text(sale.summary, style = MaterialTheme.typography.titleSmall)
+                    Text("${sale.workerName} · ${formatDateTime(sale.soldAt, timeZoneId)}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                 }
-                Text(formatCup(sale.totalCUP), fontWeight = FontWeight.Bold, color = accentColor())
+                Text(formatCup(sale.totalCUP), style = MaterialTheme.typography.titleMedium, color = accentColor())
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(formatDateTime(sale.soldAt, timeZoneId), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(if (sale.paymentMethod == PaymentMethods.TRANSFER_CUP) "Transferencia" else "Efectivo CUP", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(when (sale.status) { "SYNCED" -> "Sincronizada"; "NEEDS_REVIEW" -> "Revisar"; else -> "Pendiente" }, color = statusColor, fontWeight = FontWeight.SemiBold, fontSize = 10.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.clip(RoundedCornerShape(8.dp)).background(if (transfer) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 8.dp, vertical = 3.dp)) {
+                    Text(if (transfer) "Transferencia" else "Efectivo CUP", style = MaterialTheme.typography.labelSmall, color = if (transfer) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Box(Modifier.size(7.dp).clip(RoundedCornerShape(4.dp)).background(statusColor))
+                Text(statusText, color = statusColor, style = MaterialTheme.typography.labelSmall)
             }
-            sale.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp, maxLines = 3, overflow = TextOverflow.Ellipsis) }
+            sale.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall, maxLines = 3, overflow = TextOverflow.Ellipsis) }
             if (sale.status == "NEEDS_REVIEW" && onRetry != null) {
                 TextButton(onClick = onRetry, modifier = Modifier.align(Alignment.End)) { Text("Reintentar envío") }
             }
@@ -1938,13 +1992,13 @@ private enum class PanelType { INFO, SUCCESS, ERROR }
 @Composable
 private fun InfoPanel(title: String, message: String, type: PanelType) {
     val bg = when (type) {
-        PanelType.INFO -> MaterialTheme.colorScheme.secondaryContainer
-        PanelType.SUCCESS -> MaterialTheme.colorScheme.tertiaryContainer
+        PanelType.INFO -> MaterialTheme.colorScheme.surfaceVariant
+        PanelType.SUCCESS -> MaterialTheme.colorScheme.secondaryContainer
         PanelType.ERROR -> MaterialTheme.colorScheme.errorContainer
     }
     val fg = when (type) {
-        PanelType.INFO -> MaterialTheme.colorScheme.onSecondaryContainer
-        PanelType.SUCCESS -> MaterialTheme.colorScheme.onTertiaryContainer
+        PanelType.INFO -> MaterialTheme.colorScheme.onSurfaceVariant
+        PanelType.SUCCESS -> MaterialTheme.colorScheme.onSecondaryContainer
         PanelType.ERROR -> MaterialTheme.colorScheme.onErrorContainer
     }
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(bg).padding(12.dp), verticalAlignment = Alignment.Top) {
@@ -1959,7 +2013,7 @@ private fun InfoPanel(title: String, message: String, type: PanelType) {
 
 @Composable
 private fun EmptyPanel(title: String, message: String) {
-    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
         Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Outlined.Inventory2, null, tint = accentColor(), modifier = Modifier.size(36.dp))
             Text(title, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
