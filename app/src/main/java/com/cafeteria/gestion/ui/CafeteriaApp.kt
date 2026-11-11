@@ -13,6 +13,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -1354,9 +1355,9 @@ private fun QuantityStepper(label: String, value: String, onChange: (String) -> 
 @Composable
 private fun PaymentChoice(title: String, subtitle: String, selected: Boolean, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-    val border = if (selected) accentColor() else MaterialTheme.colorScheme.outlineVariant
+    val borderColor = if (selected) accentColor() else MaterialTheme.colorScheme.outlineVariant
     Column(
-        modifier.clip(RoundedCornerShape(14.dp)).background(bg).border(if (selected) 2.dp else 1.dp, border, RoundedCornerShape(14.dp))
+        modifier.clip(RoundedCornerShape(14.dp)).background(bg).border(if (selected) 2.dp else 1.dp, borderColor, RoundedCornerShape(14.dp))
             .clickable(enabled = enabled, onClick = onClick).padding(vertical = 12.dp, horizontal = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
