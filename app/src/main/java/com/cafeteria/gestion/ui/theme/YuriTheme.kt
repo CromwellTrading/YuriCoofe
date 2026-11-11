@@ -30,7 +30,7 @@ import androidx.core.view.WindowCompat
  * Identidad visual de YuriCoofe.
  *
  * - Base cálida y neutra (no crema): papel "azúcar" y tinta espresso.
- * - Primario por paleta (Café por defecto: tostado).
+ * - Primario por paleta (Adenium por defecto: verde bosque del logo).
  * - Semántica fija en TODAS las paletas: secundario = turquesa (dinero / listo / sincronizado),
  *   terciario = ámbar (pendiente / stock bajo), error = rojo.
  * - Títulos y cifras grandes en serif (como una pizarra de menú); la interfaz en sans.
@@ -52,7 +52,7 @@ private fun seedFor(palette: String): Seed = when (palette) {
     "BLUE" -> Seed(Color(0xFF2F63B5), Color.White, Color(0xFFDCE8FF), Color(0xFF0E2D5E), Color(0xFFAFC9FF), Color(0xFF0C2B5C), Color(0xFF214A86), Color(0xFFDCE8FF))
     "ORANGE" -> Seed(Color(0xFFB8581C), Color.White, Color(0xFFFFE0CC), Color(0xFF4A2005), Color(0xFFFFB68C), Color(0xFF4F2200), Color(0xFF7A3A0E), Color(0xFFFFE0CC))
     "ROSE" -> Seed(Color(0xFFAE3D6D), Color.White, Color(0xFFFFDDE8), Color(0xFF4C0F29), Color(0xFFFFB0CB), Color(0xFF5A1236), Color(0xFF7E2650), Color(0xFFFFDDE8))
-    else -> Seed(Color(0xFF7A3E22), Color.White, Color(0xFFF3DCCB), Color(0xFF3A1B0C), Color(0xFFE6B08A), Color(0xFF3C1D0B), Color(0xFF5A311B), Color(0xFFF3DCCB))
+    else -> Seed(Color(0xFF1E5B3A), Color.White, Color(0xFFD5EBDD), Color(0xFF0A2E1C), Color(0xFF8FD3AE), Color(0xFF00391F), Color(0xFF1B4D33), Color(0xFFD5EBDD))
 }
 
 fun yuriColorScheme(palette: String, dark: Boolean): ColorScheme {

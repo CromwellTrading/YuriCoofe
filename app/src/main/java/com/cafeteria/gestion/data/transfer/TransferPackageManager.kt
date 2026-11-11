@@ -82,7 +82,7 @@ class TransferPackageManager(private val context: Context, private val gson: Gso
         val headerSize = 4 + 1 + SALT_BYTES + NONCE_BYTES
         val buffer = ByteBuffer.wrap(encryptedPackage).order(ByteOrder.BIG_ENDIAN)
         val magic = ByteArray(4).also { buffer.get(it) }.toString(Charsets.US_ASCII)
-        require(magic == MAGIC) { "Este archivo no es un paquete YuriCoofe válido." }
+        require(magic == MAGIC) { "Este archivo no es un paquete Adenium Coofe válido." }
         val version = buffer.get()
         require(version == FORMAT_VERSION) { "La versión del paquete no es compatible con esta aplicación." }
         val salt = ByteArray(SALT_BYTES).also { buffer.get(it) }

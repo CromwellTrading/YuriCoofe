@@ -1074,7 +1074,7 @@ class CafeRepository(
 
     suspend fun activateLocalStation(code: String): UserSession {
         val parts = code.trim().split('|')
-        require(parts.size == 4 && parts[0] == "YCST1") { "El código no es un código de estación YuriCoofe válido." }
+        require(parts.size == 4 && parts[0] == "YCST1") { "El código no es un código de estación Adenium Coofe válido." }
         val businessId = parts[1]
         val stationId = parts[2]
         val secret = parts[3]

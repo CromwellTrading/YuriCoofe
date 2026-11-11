@@ -376,7 +376,7 @@ private fun QrReceiverPanel(state: CafeteriaUiState, vm: CafeteriaViewModel, isO
                     QrNotice("Necesito permiso de cámara para leer los códigos QR. No se guarda ninguna foto ni video.", isError = true)
                     Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }, modifier = Modifier.fillMaxWidth()) { Text("Permitir cámara") }
                     Text(
-                        "Si ya lo negaste dos veces, actívalo en Ajustes del teléfono → Aplicaciones → YuriCoofe → Permisos.",
+                        "Si ya lo negaste dos veces, actívalo en Ajustes del teléfono → Aplicaciones → Adenium Coofe → Permisos.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else {

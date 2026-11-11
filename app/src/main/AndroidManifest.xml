@@ -8,10 +8,18 @@
     <application
         android:name=".CafeteriaApplication"
         android:allowBackup="false"
-        android:label="YuriCoofe"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="Adenium Coofe"
         android:supportsRtl="true"
         android:theme="@style/Theme.Cafeteria"
         android:usesCleartextTraffic="false">
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_adenium" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/adenium_green" />
         <service
             android:name=".notifications.CafeMessagingService"
             android:exported="false">

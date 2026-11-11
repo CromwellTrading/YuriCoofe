@@ -1,4 +1,4 @@
-# YuriCoofe 1.7.0
+# Adenium Coofe 1.7.0
 
 ## Traspaso por QR (sin internet)
 - Botón QR en la barra superior (Yuri y trabajadoras) y tarjeta en Ajustes.
@@ -15,3 +15,9 @@
 ## Técnico
 - Dependencias: CameraX 1.4.1 y ZXing core 3.5.3 (sin Google Play Services). Permiso CAMERA (opcional).
 - versionCode 9 / 1.7.0.
+
+## Identidad Adenium Coofe
+- Nombre de la app: **Adenium Coofe**. Logo en el icono de la app (adaptativo + redondo + icono temático Android 13), pantalla de inicio (splash), login y barra superior.
+- Icono de notificaciones propio (flor + taza, silueta blanca) y color de marca para las notificaciones locales y las que llegan por Firebase.
+- Paleta por defecto "Adenium": verde bosque, dorado y turquesa; el rosa del logo queda como color de acento opcional.
+- Los códigos internos (formato de archivo, YCST1) no cambian: los paquetes y códigos de estación anteriores siguen funcionando.

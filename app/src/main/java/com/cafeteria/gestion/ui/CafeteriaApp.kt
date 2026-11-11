@@ -86,6 +86,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.*
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.cafeteria.gestion.R
 import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Remove
@@ -163,24 +166,22 @@ private fun CustomerAuthScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) 
     Box(Modifier.fillMaxSize().background(colors.background)) {
         Box(
             Modifier.fillMaxWidth().height(310.dp)
-                .background(Brush.linearGradient(listOf(Color(0xFF241812), Color(0xFF4A2A18), Color(0xFF7A3E22))))
+                .background(Brush.linearGradient(listOf(Color(0xFF0B2A1D), Color(0xFF123F2B), Color(0xFF1E5B3A))))
+                .tileBackdrop(Color(0xFFD4A961).copy(alpha = 0.10f))
         )
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(Modifier.height(20.dp))
-            Box(
-                Modifier.size(76.dp).clip(RoundedCornerShape(26.dp))
-                    .background(Color.White.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Outlined.Storefront, null, tint = Color(0xFFFFE8CF), modifier = Modifier.size(42.dp))
-            }
-            Spacer(Modifier.height(14.dp))
-            Text("YuriCoofe", color = Color(0xFFFFF4E7), fontSize = 34.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif, fontWeight = FontWeight.Bold)
+            Image(
+                painter = painterResource(R.drawable.adenium_logo),
+                contentDescription = "Adenium Coofe",
+                modifier = Modifier.size(172.dp)
+            )
+            Spacer(Modifier.height(4.dp))
             Spacer(Modifier.height(7.dp))
-            Text("Inventario y ventas, también sin internet.", color = Color(0xFFE8D4C0), fontSize = 14.sp)
+            Text("Inventario y ventas, también sin internet.", color = Color(0xFFF0D9A8), fontSize = 14.sp)
             Spacer(Modifier.height(30.dp))
 
             Card(
@@ -347,12 +348,16 @@ private fun MainShell(state: CafeteriaUiState, vm: CafeteriaViewModel) {
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 title = {
-                    Column {
-                        Text("YuriCoofe", style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            when (session.role) { Roles.OWNER -> "Administración"; Roles.WORKER -> "Punto de venta"; else -> "Tu cafetería" },
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(painterResource(R.drawable.adenium_logo), contentDescription = null, modifier = Modifier.size(42.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text("Adenium Coofe", style = MaterialTheme.typography.titleLarge)
+                            Text(
+                                when (session.role) { Roles.OWNER -> "Administración"; Roles.WORKER -> "Punto de venta"; else -> "Tu cafetería" },
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 },
                 actions = {
@@ -521,7 +526,7 @@ private fun SettingsScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
                         modifier = Modifier.fillMaxWidth(), singleLine = true
                     )
                     OutlinedButton(
-                        onClick = { exportLauncher.launch("YuriCoofe-${System.currentTimeMillis()}.ycf") },
+                        onClick = { exportLauncher.launch("AdeniumCoofe-${System.currentTimeMillis()}.ycf") },
                         enabled = transferCode.isNotBlank(), modifier = Modifier.fillMaxWidth()
                     ) { Text("Exportar paquete cifrado") }
                     OutlinedButton(
@@ -557,7 +562,7 @@ private fun SettingsScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
                     Text("Color principal", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                 }
                 val palettes = listOf(
-                    Triple("COFFEE", "Café", Color(0xFF70472F)),
+                    Triple("COFFEE", "Adenium", Color(0xFF1E5B3A)),
                     Triple("PURPLE", "Violeta", Color(0xFF6250D8)),
                     Triple("GREEN", "Verde", Color(0xFF23815E)),
                     Triple("BLUE", "Azul", Color(0xFF3267B7)),
@@ -628,7 +633,7 @@ private fun StationScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
             TopAppBar(
                 title = {
                     Column {
-                        Text("YuriCoofe · Estación", fontWeight = FontWeight.Bold)
+                        Text("Adenium Coofe · Estación", fontWeight = FontWeight.Bold)
                         Text("Bóveda local · sin acceso administrativo", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
@@ -656,7 +661,7 @@ private fun StationScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
                     Text("Entrega acumulada", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                     Text("Agrupa las operaciones recibidas sin duplicar identificadores. Los paquetes originales permanecen guardados incluso después de exportar.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(
-                        onClick = { exportLauncher.launch("YuriCoofe-estacion-${System.currentTimeMillis()}.ycf") },
+                        onClick = { exportLauncher.launch("AdeniumCoofe-estacion-${System.currentTimeMillis()}.ycf") },
                         enabled = (stats?.receivedBundles ?: 0) > 0,
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Exportar todo lo acumulado") }
@@ -693,14 +698,14 @@ private fun DashboardScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
             val heroTotal: Long? = if (cashValue != null && transferValue != null) runCatching { Math.addExact(cashValue, transferValue) }.getOrNull() else null
             Column(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
-                    .background(Brush.linearGradient(listOf(Color(0xFF241812), Color(0xFF4A2A18), Color(0xFF7A3E22))))
-                    .tileBackdrop(Color.White.copy(alpha = 0.07f))
+                    .background(Brush.linearGradient(listOf(Color(0xFF0B2A1D), Color(0xFF123F2B), Color(0xFF1E5B3A))))
+                    .tileBackdrop(Color(0xFFD4A961).copy(alpha = 0.10f))
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text("CAJA DE HOY", color = Color(0xFFE8D4C0), style = MaterialTheme.typography.labelMedium, letterSpacing = 1.5.sp)
+                Text("CAJA DE HOY", color = Color(0xFFF0D9A8), style = MaterialTheme.typography.labelMedium, letterSpacing = 1.5.sp)
                 Text(if (heroTotal != null) exactCupLabel(heroTotal, null) else "—", color = Color(0xFFFFF4E7), style = MaterialTheme.typography.displaySmall)
-                Text("${state.dashboard?.saleCount ?: salesToday.size} operaciones", color = Color(0xFFE8D4C0), style = MaterialTheme.typography.bodySmall)
+                Text("${state.dashboard?.saleCount ?: salesToday.size} operaciones", color = Color(0xFFF0D9A8), style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(8.dp))
                 val cashPart = (cashValue ?: 0L).coerceAtLeast(0L).toFloat()
                 val transferPart = (transferValue ?: 0L).coerceAtLeast(0L).toFloat()
@@ -1779,8 +1784,8 @@ private fun CustomerCatalogScreen(state: CafeteriaUiState, vm: CafeteriaViewMode
             (state.search.isBlank() || it.name.contains(state.search, true) || it.categoryName.contains(state.search, true) || it.description.contains(state.search, true)) &&
             (state.category == "Todas" || it.categoryName == state.category)
     }
-    val espresso = Color(0xFF352319)
-    val caramel = Color(0xFF8B6244)
+    val espresso = Color(0xFF0E2F22)
+    val caramel = Color(0xFFD4A961)
 
     Column(
         Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -1789,7 +1794,7 @@ private fun CustomerCatalogScreen(state: CafeteriaUiState, vm: CafeteriaViewMode
         AnimatedVisibility(visible = true, enter = fadeIn() + slideInVertically(initialOffsetY = { it / 10 })) {
             Box(
                 Modifier.fillMaxWidth().height(154.dp).clip(RoundedCornerShape(27.dp))
-                    .background(Brush.linearGradient(listOf(espresso, Color(0xFF68452F), caramel)))
+                    .background(Brush.linearGradient(listOf(espresso, Color(0xFF14452F), Color(0xFF1E5B3A))))
             ) {
                 Box(Modifier.size(170.dp).align(Alignment.CenterEnd).offset(x = 34.dp, y = 35.dp)
                     .clip(CircleShape).background(Color.White.copy(alpha = 0.07f)))
