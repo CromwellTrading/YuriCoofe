@@ -90,6 +90,8 @@ import androidx.compose.runtime.*
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import com.cafeteria.gestion.R
+import com.cafeteria.gestion.sync.SyncStatus
+import kotlinx.coroutines.delay
 import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Remove
@@ -336,6 +338,14 @@ private fun MainShell(state: CafeteriaUiState, vm: CafeteriaViewModel) {
             NavEntry(SCREEN_ANNOUNCEMENTS, "Avisos", Icons.Outlined.NotificationsActive)
         )
     }
+    val syncContext = androidx.compose.ui.platform.LocalContext.current
+    var syncError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(state.pendingCount, state.message, state.busy) {
+        while (true) {
+            syncError = SyncStatus.lastError(syncContext)
+            delay(4000)
+        }
+    }
     var showQr by remember { mutableStateOf(false) }
     val canTransfer = session.role == Roles.OWNER || session.role == Roles.WORKER
     if (showQr && canTransfer) QrTransferHub(state, vm, onClose = { showQr = false })
@@ -398,19 +408,22 @@ private fun MainShell(state: CafeteriaUiState, vm: CafeteriaViewModel) {
         snackbarHost = { SnackbarHost(snacks) }
     ) { innerPadding ->
         Column(Modifier.fillMaxSize().padding(innerPadding)) {
+            val failing = state.pendingCount > 0 && syncError != null
             if (!state.online || state.pendingCount > 0) {
                 Row(
-                    Modifier.fillMaxWidth().background(if (state.pendingCount > 0) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 16.dp, vertical = 8.dp),
+                    Modifier.fillMaxWidth().background(if (failing) MaterialTheme.colorScheme.errorContainer else if (state.pendingCount > 0) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(if (state.pendingCount > 0) Icons.Outlined.CloudSync else Icons.Outlined.CloudOff, null, tint = if (state.pendingCount > 0) warningColor() else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        if (state.pendingCount > 0) "${state.pendingCount} venta(s) o cambio(s) sin enviar. Están guardados en este teléfono: pásalos por QR o espera a tener internet."
+                        if (failing) "${state.pendingCount} sin enviar. $syncError"
+                        else if (state.pendingCount > 0) "${state.pendingCount} venta(s) o cambio(s) sin enviar. Están guardados en este teléfono: pásalos por QR o espera a tener internet."
                         else "Sin internet. Sigue vendiendo: todo queda guardado en este teléfono.",
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)
                     )
-                    if (state.pendingCount > 0 && canTransfer) TextButton(onClick = { showQr = true }) { Text("Pasar por QR", color = accentColor()) }
+                    if (state.pendingCount > 0 && state.online) TextButton(onClick = vm::syncNow, enabled = !state.busy) { Text("Reintentar", color = accentColor()) }
+                    else if (state.pendingCount > 0 && canTransfer) TextButton(onClick = { showQr = true }) { Text("Pasar por QR", color = accentColor()) }
                 }
             }
             when (state.screen) {

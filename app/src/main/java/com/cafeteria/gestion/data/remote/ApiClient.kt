@@ -39,9 +39,9 @@ class ApiClient(private val sessionStore: SessionStore) {
             }
             val client = OkHttpClient.Builder()
                 .addInterceptor(authInterceptor)
-                .connectTimeout(15, TimeUnit.SECONDS)
-                .readTimeout(25, TimeUnit.SECONDS)
-                .writeTimeout(25, TimeUnit.SECONDS)
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .writeTimeout(60, TimeUnit.SECONDS)
                 .build()
             val service = Retrofit.Builder()
                 .baseUrl(baseUrl)

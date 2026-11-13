@@ -12,6 +12,8 @@ import com.cafeteria.gestion.data.remote.CreateWorkerRequest
 import com.cafeteria.gestion.data.remote.InventoryAdjustmentRequest
 import com.cafeteria.gestion.data.remote.LocalStationDto
 import com.cafeteria.gestion.sync.SalesSyncScheduler
+import com.cafeteria.gestion.sync.SyncRunner
+import com.cafeteria.gestion.sync.SyncStatus
 import kotlinx.coroutines.launch
 
 const val SCREEN_HOME = "HOME"
@@ -482,13 +484,25 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
             state.value = state.value.copy(message = "La estación local no se conecta al servidor. Entrega el paquete a Yuri o a un dispositivo autorizado cuando sea posible.")
             return
         }
-        SalesSyncScheduler.enqueueNow(getApplication())
+        if (state.value.busy) return
         viewModelScope.launch {
-            state.value = state.value.copy(online = repository.isNetworkAvailable())
-            refreshSalesMerged()
+            state.value = state.value.copy(busy = true, message = "Sincronizando con el servidor… Si estaba dormido puede tardar hasta un minuto.")
+            val outcome = runCatching { SyncRunner.run(app) }
+                .getOrElse { com.cafeteria.gestion.sync.SyncOutcome.Retry(SyncRunner.describe(it)) }
+            SyncStatus.record(app, outcome)
+            runCatching {
+                val cached = repository.getCachedProducts()
+                val current = state.value.session
+                state.value = state.value.copy(
+                    products = if (current == null || current.role == Roles.CUSTOMER) cached.filter { it.publicVisible } else cached
+                )
+                refreshSalesMerged()
+            }
             state.value = state.value.copy(
+                busy = false,
+                online = repository.isNetworkAvailable(),
                 pendingCount = repository.pendingCount(),
-                message = "Sincronización solicitada. Las ventas y cambios del catálogo permanecen guardados hasta recibir confirmación del servidor."
+                message = outcome.userMessage()
             )
         }
     }
