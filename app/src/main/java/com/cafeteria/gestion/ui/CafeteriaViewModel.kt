@@ -479,6 +479,20 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
         state.value = state.value.copy(stationStats = repository.localStationStats(), message = result)
     }
 
+    fun lastLoginIdentifier(): String = repository.lastLoginIdentifier()
+
+    /** Renueva la sesión de la misma cuenta y sincroniza. Devuelve el error al diálogo para mostrarlo ahí. */
+    fun reauthenticate(identifier: String, password: String, onResult: (Result<Unit>) -> Unit) {
+        viewModelScope.launch {
+            state.value = state.value.copy(busy = true)
+            val result = runCatching { repository.reauthenticate(identifier, password) }
+            result.onSuccess { state.value = state.value.copy(session = it) }
+            state.value = state.value.copy(busy = false)
+            onResult(result.map { })
+            if (result.isSuccess) syncNow()
+        }
+    }
+
     fun syncNow() {
         if (state.value.session?.role == Roles.LOCAL_STATION) {
             state.value = state.value.copy(message = "La estación local no se conecta al servidor. Entrega el paquete a Yuri o a un dispositivo autorizado cuando sea posible.")

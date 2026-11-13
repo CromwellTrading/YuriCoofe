@@ -91,6 +91,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import com.cafeteria.gestion.R
 import com.cafeteria.gestion.sync.SyncStatus
+import com.cafeteria.gestion.BuildConfig
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import kotlinx.coroutines.delay
 import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.MoreVert
@@ -340,12 +342,16 @@ private fun MainShell(state: CafeteriaUiState, vm: CafeteriaViewModel) {
     }
     val syncContext = androidx.compose.ui.platform.LocalContext.current
     var syncError by remember { mutableStateOf<String?>(null) }
+    var needsLogin by remember { mutableStateOf(false) }
+    var showRelogin by remember { mutableStateOf(false) }
     LaunchedEffect(state.pendingCount, state.message, state.busy) {
         while (true) {
             syncError = SyncStatus.lastError(syncContext)
+            needsLogin = SyncStatus.needsLogin(syncContext)
             delay(4000)
         }
     }
+    if (showRelogin) ReloginDialog(vm) { showRelogin = false }
     var showQr by remember { mutableStateOf(false) }
     val canTransfer = session.role == Roles.OWNER || session.role == Roles.WORKER
     if (showQr && canTransfer) QrTransferHub(state, vm, onClose = { showQr = false })
@@ -422,7 +428,8 @@ private fun MainShell(state: CafeteriaUiState, vm: CafeteriaViewModel) {
                         else "Sin internet. Sigue vendiendo: todo queda guardado en este teléfono.",
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)
                     )
-                    if (state.pendingCount > 0 && state.online) TextButton(onClick = vm::syncNow, enabled = !state.busy) { Text("Reintentar", color = accentColor()) }
+                    if (failing && needsLogin) TextButton(onClick = { showRelogin = true }) { Text("Entrar de nuevo", color = accentColor()) }
+                    else if (state.pendingCount > 0 && state.online) TextButton(onClick = vm::syncNow, enabled = !state.busy) { Text("Reintentar", color = accentColor()) }
                     else if (state.pendingCount > 0 && canTransfer) TextButton(onClick = { showQr = true }) { Text("Pasar por QR", color = accentColor()) }
                 }
             }
@@ -620,8 +627,15 @@ private fun SettingsScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
                     Text(if (state.online) "Con conexión de red" else "Sin conexión; los datos nuevos se guardan localmente", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text("Operaciones pendientes: ${state.pendingCount}", fontWeight = FontWeight.Medium)
-                OutlinedButton(onClick = vm::syncNow, modifier = Modifier.fillMaxWidth()) {
+                val serverHost = runCatching { java.net.URI(BuildConfig.API_BASE_URL.trim()).host }.getOrNull()
+                Text("Servidor: ${if (serverHost.isNullOrBlank()) "sin configurar" else serverHost} · versión ${BuildConfig.VERSION_NAME}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onClick = vm::syncNow, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Outlined.CloudSync, null); Spacer(Modifier.width(8.dp)); Text("Sincronizar ahora")
+                }
+                if (session?.role == Roles.OWNER || session?.role == Roles.WORKER) {
+                    var showReloginSettings by remember { mutableStateOf(false) }
+                    if (showReloginSettings) ReloginDialog(vm) { showReloginSettings = false }
+                    TextButton(onClick = { showReloginSettings = true }, modifier = Modifier.fillMaxWidth()) { Text("Entrar de nuevo (renovar sesión sin perder datos)") }
                 }
             }
         }
@@ -1340,6 +1354,46 @@ private fun SellDialog(product: ProductEntity, busy: Boolean, onDismiss: () -> U
             }, modifier = Modifier.height(48.dp), shape = RoundedCornerShape(14.dp)) { Text(if (busy) "Guardando…" else "Confirmar venta", fontWeight = FontWeight.SemiBold) }
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancelar") } }
+    )
+}
+
+@Composable
+private fun ReloginDialog(vm: CafeteriaViewModel, onDismiss: () -> Unit) {
+    var identifier by remember { mutableStateOf(vm.lastLoginIdentifier()) }
+    var password by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var working by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = { if (!working) onDismiss() },
+        title = { Text("Entrar de nuevo", style = MaterialTheme.typography.titleLarge) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Escribe otra vez tu usuario y contraseña. Las ventas y cambios guardados en este teléfono se conservan y se envían al terminar.", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(identifier, { identifier = it }, label = { Text("Usuario") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    password, { password = it }, label = { Text("Contraseña") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = !working && identifier.isNotBlank() && password.isNotBlank(),
+                onClick = {
+                    working = true
+                    error = null
+                    vm.reauthenticate(identifier, password) { result ->
+                        working = false
+                        result.onSuccess { onDismiss() }
+                        result.onFailure { error = it.message ?: "No se pudo entrar." }
+                    }
+                }
+            ) { Text(if (working) "Entrando…" else "Entrar") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !working) { Text("Cancelar") } }
     )
 }
 

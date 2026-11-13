@@ -24,7 +24,7 @@ sealed class SyncOutcome {
     /** Fallo temporal (red, servidor dormido, 5xx): se reintenta solo. */
     data class Retry(val reason: String) : SyncOutcome()
     /** Requiere acción de la persona (sesión caducada, otra cuenta, app sin servidor): no tiene sentido reintentar ciego. */
-    data class Blocked(val reason: String) : SyncOutcome()
+    data class Blocked(val reason: String, val needsLogin: Boolean = false) : SyncOutcome()
 
     fun userMessage(): String = when (this) {
         is NothingToSend -> "No hay nada pendiente por enviar."
@@ -48,8 +48,15 @@ object SyncStatus {
             is SyncOutcome.Blocked -> outcome.reason
             else -> null
         }
-        prefs(context).edit().putLong("attempt_at", System.currentTimeMillis()).putString("error", error).apply()
+        val needsLogin = outcome is SyncOutcome.Blocked && outcome.needsLogin
+        prefs(context).edit()
+            .putLong("attempt_at", System.currentTimeMillis())
+            .putString("error", error)
+            .putBoolean("needs_login", needsLogin)
+            .apply()
     }
+
+    fun needsLogin(context: Context): Boolean = prefs(context).getBoolean("needs_login", false)
 
     fun lastError(context: Context): String? = prefs(context).getString("error", null)
 }
@@ -76,7 +83,7 @@ object SyncRunner {
     }
 
     private const val SESSION_EXPIRED =
-        "La sesión caducó o se cerró en otro dispositivo. Cierra sesión y vuelve a entrar con internet; lo guardado en este teléfono no se pierde."
+        "El servidor no reconoce la sesión de este teléfono (caducó, se cerró o se perdió el token). Toca «Entrar de nuevo»: lo guardado no se pierde."
 
     /** Render gratis duerme el servicio: la primera petición puede tardar ~1 minuto. Se despierta con /health antes de enviar. */
     private fun warmUp() {
@@ -126,6 +133,18 @@ object SyncRunner {
         }
         warmUp()
 
+        // Comprobación previa de la sesión: una sola petición barata que evita enviar a ciegas.
+        if (app.sessionStore.getToken().isNullOrBlank()) {
+            return SyncOutcome.Blocked("Este teléfono no tiene guardado el token de sesión. Toca «Entrar de nuevo»: lo guardado no se pierde.", needsLogin = true)
+        }
+        try {
+            val me = service.me()
+            if (me.code() == 401) return SyncOutcome.Blocked(SESSION_EXPIRED, needsLogin = true)
+            if (me.code() in 500..599) return SyncOutcome.Retry("El servidor respondió con error ${me.code()}.")
+        } catch (e: Exception) {
+            return SyncOutcome.Retry(describe(e))
+        }
+
         var sent = 0
         var review = 0
         var foreignCatalog = 0
@@ -144,7 +163,7 @@ object SyncRunner {
                     app.repository.syncQueuedProduct(item)
                     sent++
                 } catch (e: CafeRepository.QueuedOperationException) {
-                    if (e.httpCode == 401) return SyncOutcome.Blocked(SESSION_EXPIRED)
+                    if (e.httpCode == 401) return SyncOutcome.Blocked(SESSION_EXPIRED, needsLogin = true)
                     if (e.httpCode >= 500) return SyncOutcome.Retry("El servidor respondió con error ${e.httpCode}.")
                     productDao.updateStatus(item.id, "NEEDS_REVIEW", e.message ?: "El servidor necesita revisar este cambio de producto.")
                     review++
@@ -166,7 +185,7 @@ object SyncRunner {
                     app.repository.syncQueuedInventoryAdjustment(item)
                     sent++
                 } catch (e: CafeRepository.QueuedOperationException) {
-                    if (e.httpCode == 401) return SyncOutcome.Blocked(SESSION_EXPIRED)
+                    if (e.httpCode == 401) return SyncOutcome.Blocked(SESSION_EXPIRED, needsLogin = true)
                     if (e.httpCode >= 500) return SyncOutcome.Retry("El servidor respondió con error ${e.httpCode}.")
                     adminDao.updateStatus(item.id, "NEEDS_REVIEW", e.message ?: "El servidor necesita revisar este ajuste.", null)
                     review++
@@ -195,7 +214,7 @@ object SyncRunner {
                         salesDao.updateStatus(sale.id, "SYNCED", null, OffsetDateTime.now().toString())
                         sent++
                     }
-                    response.code() == 401 -> return SyncOutcome.Blocked(SESSION_EXPIRED)
+                    response.code() == 401 -> return SyncOutcome.Blocked(SESSION_EXPIRED, needsLogin = true)
                     response.code() in 500..599 -> return SyncOutcome.Retry("El servidor respondió con error ${response.code()}.")
                     else -> {
                         val raw = response.errorBody()?.string()

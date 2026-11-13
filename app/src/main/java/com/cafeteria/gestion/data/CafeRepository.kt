@@ -57,6 +57,33 @@ class CafeRepository(
 
     suspend fun restoreSession(): UserSession? = sessionStore.getSession()
 
+    fun lastLoginIdentifier(): String = appContext.getSharedPreferences("sync_status", 0).getString("last_identifier", "") ?: ""
+
+    /**
+     * Renueva el token de la MISMA cuenta sin cerrar sesión: no toca la base local, así que ventas, productos y
+     * ajustes guardados siguen intactos y se envían después. Rechaza una cuenta distinta a la de la sesión actual.
+     */
+    suspend fun reauthenticate(identifier: String, password: String): UserSession = withContext(Dispatchers.IO) {
+        val current = sessionStore.getSession() ?: throw IllegalStateException("No hay una sesión iniciada.")
+        require(current.role == Roles.OWNER || current.role == Roles.WORKER) { "Esta cuenta no necesita volver a entrar." }
+        val value = identifier.trim()
+        require(value.isNotBlank()) { "Escribe tu usuario." }
+        require(password.isNotBlank()) { "Escribe tu contraseña." }
+        val response = apiClient.service().login(LoginRequest(value, password))
+        if (!response.isSuccessful) {
+            throw if (response.code() == 401) IllegalStateException("El usuario o la contraseña no son correctos.")
+            else apiError(response.code(), response.errorBody()?.string())
+        }
+        val auth = response.body()?.data ?: throw IllegalStateException(response.body()?.message ?: "El servicio no devolvió una sesión válida.")
+        val fresh = auth.toUserSession()
+        require(fresh.userId == current.userId && fresh.businessId == current.businessId) {
+            "Esa cuenta no es la misma que tiene cambios guardados en este teléfono. Entra con la cuenta original."
+        }
+        sessionStore.save(fresh)
+        appContext.getSharedPreferences("sync_status", 0).edit().putString("last_identifier", value).putBoolean("needs_login", false).apply()
+        fresh
+    }
+
     suspend fun login(identifier: String, password: String): UserSession {
         val loginValue = identifier.trim()
         require(loginValue.isNotBlank()) { "Escribe tu nombre o usuario." }
@@ -87,7 +114,10 @@ class CafeRepository(
                 require(auth.role in setOf(Roles.OWNER, Roles.WORKER, Roles.CUSTOMER)) { "El servicio devolvió un rol no reconocido." }
                 val session = auth.toUserSession()
                 if (session.role == Roles.CUSTOMER) sessionStore.saveCustomerCredentials(session, loginValue, password)
-                else sessionStore.save(session)
+                else {
+                    sessionStore.save(session)
+                    appContext.getSharedPreferences("sync_status", 0).edit().putString("last_identifier", loginValue).apply()
+                }
                 SalesSyncScheduler.enqueueNow(appContext)
                 return session
             } catch (error: java.io.IOException) {
