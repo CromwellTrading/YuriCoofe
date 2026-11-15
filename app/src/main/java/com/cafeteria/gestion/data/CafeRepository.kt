@@ -63,7 +63,10 @@ class CafeRepository(
      * Renueva el token de la MISMA cuenta sin cerrar sesión: no toca la base local, así que ventas, productos y
      * ajustes guardados siguen intactos y se envían después. Rechaza una cuenta distinta a la de la sesión actual.
      */
-    suspend fun reauthenticate(identifier: String, password: String): UserSession = withContext(Dispatchers.IO) {
+    /** La cuenta existe en el servidor pero con otro identificador interno (base de datos recreada). Requiere confirmación. */
+    class AccountChangedException(message: String) : IllegalStateException(message)
+
+    suspend fun reauthenticate(identifier: String, password: String, adoptLocalData: Boolean = false): UserSession = withContext(Dispatchers.IO) {
         val current = sessionStore.getSession() ?: throw IllegalStateException("No hay una sesión iniciada.")
         require(current.role == Roles.OWNER || current.role == Roles.WORKER) { "Esta cuenta no necesita volver a entrar." }
         val value = identifier.trim()
@@ -76,8 +79,23 @@ class CafeRepository(
         }
         val auth = response.body()?.data ?: throw IllegalStateException(response.body()?.message ?: "El servicio no devolvió una sesión válida.")
         val fresh = auth.toUserSession()
-        require(fresh.userId == current.userId && fresh.businessId == current.businessId) {
-            "Esa cuenta no es la misma que tiene cambios guardados en este teléfono. Entra con la cuenta original."
+        val sameAccount = fresh.userId == current.userId && fresh.businessId == current.businessId
+        if (!sameAccount) {
+            require(fresh.role == current.role) { "Esa cuenta tiene otro rol distinto al de esta sesión. Entra con la cuenta original." }
+            if (!adoptLocalData) {
+                throw AccountChangedException(
+                    "Esta cuenta existe en el servidor, pero con otro identificador interno: la base de datos se volvió a crear después de que este teléfono guardó sus cambios. " +
+                        "Puedes mover los cambios guardados a esta cuenta. Los productos nuevos se enviarán; lo que dependa de productos que ya no existen quedará marcado para revisión."
+                )
+            }
+            val oldBusiness = current.businessId.orEmpty()
+            val newBusiness = fresh.businessId.orEmpty()
+            database.withTransaction {
+                queue.reassignWorker(current.userId, fresh.userId)
+                if (oldBusiness.isNotBlank() && newBusiness.isNotBlank()) queue.reassignBusiness(oldBusiness, newBusiness)
+                productQueue.reassignOwner(current.userId, fresh.userId, newBusiness)
+                adminQueue.reassignOwner(current.userId, fresh.userId, newBusiness)
+            }
         }
         sessionStore.save(fresh)
         appContext.getSharedPreferences("sync_status", 0).edit().putString("last_identifier", value).putBoolean("needs_login", false).apply()

@@ -1362,6 +1362,7 @@ private fun ReloginDialog(vm: CafeteriaViewModel, onDismiss: () -> Unit) {
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var working by remember { mutableStateOf(false) }
+    var adoptNeeded by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = { if (!working) onDismiss() },
         title = { Text("Entrar de nuevo", style = MaterialTheme.typography.titleLarge) },
@@ -1384,13 +1385,16 @@ private fun ReloginDialog(vm: CafeteriaViewModel, onDismiss: () -> Unit) {
                 onClick = {
                     working = true
                     error = null
-                    vm.reauthenticate(identifier, password) { result ->
+                    vm.reauthenticate(identifier, password, adoptNeeded) { result ->
                         working = false
                         result.onSuccess { onDismiss() }
-                        result.onFailure { error = it.message ?: "No se pudo entrar." }
+                        result.onFailure {
+                            adoptNeeded = it is com.cafeteria.gestion.data.CafeRepository.AccountChangedException
+                            error = it.message ?: "No se pudo entrar."
+                        }
                     }
                 }
-            ) { Text(if (working) "Entrando…" else "Entrar") }
+            ) { Text(if (working) "Entrando…" else if (adoptNeeded) "Mover mis cambios y entrar" else "Entrar") }
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !working) { Text("Cancelar") } }
     )

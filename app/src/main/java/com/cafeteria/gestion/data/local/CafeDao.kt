@@ -28,6 +28,13 @@ interface ProductDao {
 
 @Dao
 interface SaleQueueDao {
+    /** Cambio de cuenta (base de datos recreada): las ventas aún no confirmadas pasan a la cuenta/cafetería nuevas. */
+    @Query("UPDATE sale_queue SET workerId = :newUser WHERE workerId = :oldUser AND status != 'SYNCED'")
+    suspend fun reassignWorker(oldUser: String, newUser: String): Int
+
+    @Query("UPDATE sale_queue SET businessId = :newBusiness WHERE businessId = :oldBusiness AND status != 'SYNCED'")
+    suspend fun reassignBusiness(oldBusiness: String, newBusiness: String): Int
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(sale: SaleQueueEntity)
 
@@ -82,6 +89,9 @@ interface SaleQueueDao {
 
 @Dao
 interface ProductQueueDao {
+    @Query("UPDATE product_queue SET ownerId = :newUser, businessId = :newBusiness WHERE ownerId = :oldUser")
+    suspend fun reassignOwner(oldUser: String, newUser: String, newBusiness: String): Int
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(item: ProductQueueEntity)
 
@@ -125,6 +135,9 @@ interface ProductQueueDao {
 
 @Dao
 interface AdminOperationDao {
+    @Query("UPDATE admin_operation_queue SET ownerId = :newUser, businessId = :newBusiness WHERE ownerId = :oldUser")
+    suspend fun reassignOwner(oldUser: String, newUser: String, newBusiness: String): Int
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(item: AdminOperationEntity)
 

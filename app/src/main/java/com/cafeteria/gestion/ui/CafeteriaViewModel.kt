@@ -482,10 +482,10 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
     fun lastLoginIdentifier(): String = repository.lastLoginIdentifier()
 
     /** Renueva la sesión de la misma cuenta y sincroniza. Devuelve el error al diálogo para mostrarlo ahí. */
-    fun reauthenticate(identifier: String, password: String, onResult: (Result<Unit>) -> Unit) {
+    fun reauthenticate(identifier: String, password: String, adoptLocalData: Boolean, onResult: (Result<Unit>) -> Unit) {
         viewModelScope.launch {
             state.value = state.value.copy(busy = true)
-            val result = runCatching { repository.reauthenticate(identifier, password) }
+            val result = runCatching { repository.reauthenticate(identifier, password, adoptLocalData) }
             result.onSuccess { state.value = state.value.copy(session = it) }
             state.value = state.value.copy(busy = false)
             onResult(result.map { })
