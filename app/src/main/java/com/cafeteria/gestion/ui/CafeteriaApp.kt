@@ -631,6 +631,9 @@ private fun SettingsScreen(state: CafeteriaUiState, vm: CafeteriaViewModel) {
                 OutlinedButton(onClick = vm::syncNow, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Outlined.CloudSync, null); Spacer(Modifier.width(8.dp)); Text("Sincronizar ahora")
                 }
+                var showDiagnostics by remember { mutableStateOf(false) }
+                if (showDiagnostics) DiagnosticsDialog(vm) { showDiagnostics = false }
+                TextButton(onClick = { showDiagnostics = true }, modifier = Modifier.fillMaxWidth()) { Text("Diagnóstico de conexión") }
                 if (session?.role == Roles.OWNER || session?.role == Roles.WORKER) {
                     var showReloginSettings by remember { mutableStateOf(false) }
                     if (showReloginSettings) ReloginDialog(vm) { showReloginSettings = false }
@@ -1353,6 +1356,33 @@ private fun SellDialog(product: ProductEntity, busy: Boolean, onDismiss: () -> U
             }, modifier = Modifier.height(48.dp), shape = RoundedCornerShape(14.dp)) { Text(if (busy) "Guardando…" else "Confirmar venta", fontWeight = FontWeight.SemiBold) }
         },
         dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancelar") } }
+    )
+}
+
+@Composable
+private fun DiagnosticsDialog(vm: CafeteriaViewModel, onDismiss: () -> Unit) {
+    var lines by remember { mutableStateOf<List<String>?>(null) }
+    LaunchedEffect(Unit) { lines = runCatching { vm.runDiagnostics() }.getOrElse { listOf("No se pudo ejecutar el diagnóstico: ${it.message}") } }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Diagnóstico de conexión", style = MaterialTheme.typography.titleLarge) },
+        text = {
+            val current = lines
+            if (current == null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Probando el servidor… puede tardar hasta un minuto si estaba dormido.", style = MaterialTheme.typography.bodySmall)
+                }
+            } else {
+                SelectionContainer {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        current.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } }
     )
 }
 

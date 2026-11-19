@@ -481,6 +481,8 @@ class CafeteriaViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun lastLoginIdentifier(): String = repository.lastLoginIdentifier()
 
+    suspend fun runDiagnostics(): List<String> = repository.runDiagnostics()
+
     /** Renueva la sesión de la misma cuenta y sincroniza. Devuelve el error al diálogo para mostrarlo ahí. */
     fun reauthenticate(identifier: String, password: String, adoptLocalData: Boolean, onResult: (Result<Unit>) -> Unit) {
         viewModelScope.launch {

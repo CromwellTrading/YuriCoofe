@@ -57,6 +57,43 @@ class CafeRepository(
 
     suspend fun restoreSession(): UserSession? = sessionStore.getSession()
 
+    /** Pruebas de conexión con resultado legible, para ver en pantalla qué responde realmente el servidor. */
+    suspend fun runDiagnostics(): List<String> = withContext(Dispatchers.IO) {
+        val out = mutableListOf<String>()
+        val base = com.cafeteria.gestion.BuildConfig.API_BASE_URL.trim()
+        out += "Versión de la app: ${com.cafeteria.gestion.BuildConfig.VERSION_NAME}"
+        out += "Servidor: ${runCatching { java.net.URI(base).host }.getOrNull() ?: "sin configurar"}"
+        val session = sessionStore.getSession()
+        out += "Sesión local: ${session?.role ?: "ninguna"} · usuario ${session?.userId?.take(8) ?: "-"} · cafetería ${session?.businessId?.take(8) ?: "-"}"
+        val token = sessionStore.getToken()
+        out += "Token guardado: ${if (token.isNullOrBlank()) "NO" else "sí (${token.length} caracteres)"}"
+        if (base.isBlank()) return@withContext out
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(75, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        fun probe(label: String, path: String, withToken: Boolean) {
+            val started = System.currentTimeMillis()
+            try {
+                val builder = okhttp3.Request.Builder().url(base + path).get()
+                    .header("Accept", "application/json")
+                    .header("X-App-Version", com.cafeteria.gestion.BuildConfig.VERSION_NAME)
+                if (withToken && !token.isNullOrBlank()) builder.header("Authorization", "Bearer $token")
+                client.newCall(builder.build()).execute().use { response ->
+                    val body = response.body?.string().orEmpty().replace(Regex("\\s+"), " ").take(240)
+                    out += "$label → ${response.code} (${System.currentTimeMillis() - started} ms) $body"
+                }
+            } catch (e: Exception) {
+                out += "$label → sin respuesta: ${e.javaClass.simpleName} ${e.message.orEmpty()}".take(260)
+            }
+        }
+        probe("1. Despertar servidor", "health", false)
+        probe("2. Configuración", "health/ready", false)
+        probe("3. Mi sesión", "api/v1/auth/me", true)
+        probe("4. Catálogo", "api/v1/products", true)
+        out
+    }
+
     fun lastLoginIdentifier(): String = appContext.getSharedPreferences("sync_status", 0).getString("last_identifier", "") ?: ""
 
     /**

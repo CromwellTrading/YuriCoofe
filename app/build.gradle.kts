@@ -17,8 +17,8 @@ android {
         applicationId = "com.cafeteria.gestion"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.7.3"
+        versionCode = 13
+        versionName = "1.7.4"
         fun configValue(name: String): String = providers.gradleProperty(name).orElse("").get()
         fun quotedConfig(name: String) = "\"${configValue(name).replace("\\", "\\\\").replace("\"", "\\\"")}\""
         buildConfigField("String", "API_BASE_URL", quotedConfig("API_BASE_URL"))
